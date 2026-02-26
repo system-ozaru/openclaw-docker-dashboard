@@ -1,13 +1,12 @@
 import crypto from "crypto";
 import { getInternalUrl } from "./zeaburService";
 
-// Dynamic import to avoid Next.js build-time static analysis issues with native ws module
-let _WebSocket: typeof import("ws").WebSocket | null = null;
-async function getWebSocket() {
-  if (!_WebSocket) {
-    const mod = await import("ws");
-    _WebSocket = mod.WebSocket ?? (mod.default as unknown as typeof import("ws")).WebSocket;
-  }
+// Use require() to avoid dynamic import() failing in Next.js server runtime
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const _wsModule = require("ws") as typeof import("ws");
+const _WebSocket = (_wsModule.WebSocket ?? (_wsModule as unknown as { default: typeof import("ws") }).default?.WebSocket ?? _wsModule) as typeof import("ws").WebSocket;
+
+function getWebSocket() {
   return _WebSocket;
 }
 
@@ -92,7 +91,7 @@ async function connectWs(
   evictLRU();
   ensureIdleSweep();
 
-  const WS = await getWebSocket();
+  const WS = getWebSocket();
   const host = getInternalUrl(serviceId, port).replace("http://", "");
   const url = `ws://${host}/ws`;
   const ws = new WS(url, { headers: { Origin: `http://${host}` } });
