@@ -121,7 +121,7 @@ async function connectWs(
           method: "connect",
           id: connectId,
           params: {
-            client: { id: "fleet-dashboard", displayName: "Fleet Dashboard", mode: "webchat", version: "1.0.0" },
+            client: { id: "fleet-dashboard", displayName: "Fleet Dashboard", mode: "backend", version: "1.0.0" },
             auth: { token },
             minProtocol: 1,
             maxProtocol: 1,
