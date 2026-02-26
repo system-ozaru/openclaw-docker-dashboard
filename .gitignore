@@ -1,5 +1,5 @@
 .env
-agents/
+/agents/
 node_modules/
 .DS_Store
 control-panel/node_modules/
