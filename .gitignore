@@ -1,0 +1,11 @@
+.env
+agents/
+node_modules/
+.DS_Store
+control-panel/node_modules/
+control-panel/.next/
+data/
+deploy/agent-01/.env
+deploy/agent-01/config/
+.claude/
+.playwright-mcp/

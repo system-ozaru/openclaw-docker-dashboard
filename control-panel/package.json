@@ -1,0 +1,25 @@
+{
+  "name": "openclaw-fleet-control",
+  "version": "1.5.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack -p 3333",
+    "build": "next build",
+    "start": "next start -p 3333"
+  },
+  "dependencies": {
+    "next": "^15.2.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.0.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/ws": "^8.18.1",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.0"
+  }
+}

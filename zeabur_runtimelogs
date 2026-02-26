@@ -1,0 +1,79 @@
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Pulling: Pulling image "registry-oci.zeabur.cloud/e-699f0053a57eca1e4a397137/s-699f0092eae0acb0cfea23bd:d-699f0a7cdfd7b10322b3acda"
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Pulled: Successfully pulled image "registry-oci.zeabur.cloud/e-699f0053a57eca1e4a397137/s-699f0092eae0acb0cfea23bd:d-699f0a7cdfd7b10322b3acda" in 13m4.546s (13m4.546s including waiting). Image size: 1140199006 bytes.
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Created: Created container: agent-01
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Failed: Error: failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "/home/openclaw/entrypoint.sh": permission denied
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Pulling: Pulling image "registry-oci.zeabur.cloud/e-699f0053a57eca1e4a397137/s-699f0092eae0acb0cfea23bd:d-699f0a7cdfd7b10322b3acda"
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Pulled: Successfully pulled image "registry-oci.zeabur.cloud/e-699f0053a57eca1e4a397137/s-699f0092eae0acb0cfea23bd:d-699f0a7cdfd7b10322b3acda" in 595ms (595ms including waiting). Image size: 1140199006 bytes.
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Created: Created container: agent-01
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Failed: Error: failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "/home/openclaw/entrypoint.sh": permission denied
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - BackOff: Back-off restarting failed container agent-01 in pod service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd_environment-699f0053a57eca1e4a397137(c4112e4f-a386-4f83-a155-eb7fef1802ff)
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - BackOff: Back-off restarting failed container agent-01 in pod service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd_environment-699f0053a57eca1e4a397137(c4112e4f-a386-4f83-a155-eb7fef1802ff)
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Pulling: Pulling image "registry-oci.zeabur.cloud/e-699f0053a57eca1e4a397137/s-699f0092eae0acb0cfea23bd:d-699f0a7cdfd7b10322b3acda"
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Pulled: Successfully pulled image "registry-oci.zeabur.cloud/e-699f0053a57eca1e4a397137/s-699f0092eae0acb0cfea23bd:d-699f0a7cdfd7b10322b3acda" in 623ms (623ms including waiting). Image size: 1140199006 bytes.
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Created: Created container: agent-01
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Failed: Error: failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "/home/openclaw/entrypoint.sh": permission denied
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - BackOff: Back-off restarting failed container agent-01 in pod service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd_environment-699f0053a57eca1e4a397137(c4112e4f-a386-4f83-a155-eb7fef1802ff)
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - BackOff: Back-off restarting failed container agent-01 in pod service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd_environment-699f0053a57eca1e4a397137(c4112e4f-a386-4f83-a155-eb7fef1802ff)
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Pulling: Pulling image "registry-oci.zeabur.cloud/e-699f0053a57eca1e4a397137/s-699f0092eae0acb0cfea23bd:d-699f0a7cdfd7b10322b3acda"
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Pulled: Successfully pulled image "registry-oci.zeabur.cloud/e-699f0053a57eca1e4a397137/s-699f0092eae0acb0cfea23bd:d-699f0a7cdfd7b10322b3acda" in 7.962s (7.962s including waiting). Image size: 1140199006 bytes.
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Created: Created container: agent-01
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Failed: Error: failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "/home/openclaw/entrypoint.sh": permission denied
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - BackOff: Back-off restarting failed container agent-01 in pod service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd_environment-699f0053a57eca1e4a397137(c4112e4f-a386-4f83-a155-eb7fef1802ff)
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - BackOff: Back-off restarting failed container agent-01 in pod service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd_environment-699f0053a57eca1e4a397137(c4112e4f-a386-4f83-a155-eb7fef1802ff)
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - BackOff: Back-off restarting failed container agent-01 in pod service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd_environment-699f0053a57eca1e4a397137(c4112e4f-a386-4f83-a155-eb7fef1802ff)
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - BackOff: Back-off restarting failed container agent-01 in pod service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd_environment-699f0053a57eca1e4a397137(c4112e4f-a386-4f83-a155-eb7fef1802ff)
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Pulling: Pulling image "registry-oci.zeabur.cloud/e-699f0053a57eca1e4a397137/s-699f0092eae0acb0cfea23bd:d-699f0a7cdfd7b10322b3acda"
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Pulled: Successfully pulled image "registry-oci.zeabur.cloud/e-699f0053a57eca1e4a397137/s-699f0092eae0acb0cfea23bd:d-699f0a7cdfd7b10322b3acda" in 5.161s (5.161s including waiting). Image size: 1140199006 bytes.
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Created: Created container: agent-01
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Failed: Error: failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "/home/openclaw/entrypoint.sh": permission denied
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - BackOff: Back-off restarting failed container agent-01 in pod service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd_environment-699f0053a57eca1e4a397137(c4112e4f-a386-4f83-a155-eb7fef1802ff)
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - BackOff: Back-off restarting failed container agent-01 in pod service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd_environment-699f0053a57eca1e4a397137(c4112e4f-a386-4f83-a155-eb7fef1802ff)
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - BackOff: Back-off restarting failed container agent-01 in pod service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd_environment-699f0053a57eca1e4a397137(c4112e4f-a386-4f83-a155-eb7fef1802ff)
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - BackOff: Back-off restarting failed container agent-01 in pod service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd_environment-699f0053a57eca1e4a397137(c4112e4f-a386-4f83-a155-eb7fef1802ff)
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - BackOff: Back-off restarting failed container agent-01 in pod service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd_environment-699f0053a57eca1e4a397137(c4112e4f-a386-4f83-a155-eb7fef1802ff)
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - BackOff: Back-off restarting failed container agent-01 in pod service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd_environment-699f0053a57eca1e4a397137(c4112e4f-a386-4f83-a155-eb7fef1802ff)
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Pulling: Pulling image "registry-oci.zeabur.cloud/e-699f0053a57eca1e4a397137/s-699f0092eae0acb0cfea23bd:d-699f0a7cdfd7b10322b3acda"
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Pulled: Successfully pulled image "registry-oci.zeabur.cloud/e-699f0053a57eca1e4a397137/s-699f0092eae0acb0cfea23bd:d-699f0a7cdfd7b10322b3acda" in 6.129s (6.129s including waiting). Image size: 1140199006 bytes.
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Created: Created container: agent-01
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - Failed: Error: failed to create containerd task: failed to create shim task: OCI runtime create failed: runc create failed: unable to start container process: error during container init: exec: "/home/openclaw/entrypoint.sh": permission denied
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - BackOff: Back-off restarting failed container agent-01 in pod service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd_environment-699f0053a57eca1e4a397137(c4112e4f-a386-4f83-a155-eb7fef1802ff)
+
+[Zeabur] Pod/service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd - BackOff: Back-off restarting failed container agent-01 in pod service-699f0092eae0acb0cfea23bd-5f5bbcc7c4-jcdqd_environment-699f0053a57eca1e4a397137(c4112e4f-a386-4f83-a155-eb7fef1802ff)
