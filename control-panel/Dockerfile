@@ -7,8 +7,10 @@ RUN npm run build
 
 FROM node:22-slim
 WORKDIR /app
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-ENV PORT=3333 FLEET_MODE=zeabur
+COPY --from=builder /app/package*.json ./
+RUN npm ci --omit=dev
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/next.config.ts ./
+ENV PORT=3333 FLEET_MODE=zeabur NODE_ENV=production
 EXPOSE 3333
-CMD ["node", "server.js"]
+CMD ["npx", "next", "start", "-p", "3333"]
