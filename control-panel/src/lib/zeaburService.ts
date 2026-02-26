@@ -1,4 +1,4 @@
-const ZEABUR_API = "https://gateway.zeabur.com/graphql";
+const ZEABUR_API = process.env.ZEABUR_API_URL || "https://api.zeabur.com/graphql";
 
 function env(key: string): string {
   const val = process.env[key];
