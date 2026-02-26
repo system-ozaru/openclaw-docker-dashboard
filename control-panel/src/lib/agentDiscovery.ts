@@ -157,11 +157,24 @@ async function dockerGetFleetOverview(): Promise<FleetOverview> {
 
 // ===================== Zeabur mode =====================
 
-const ZEABUR_GATEWAY_PORT = 8080;
+const ZEABUR_GATEWAY_PORT_DEFAULT = 18789;
 
-async function zeaburCheckHealth(serviceId: string): Promise<{ running: boolean; healthy: boolean }> {
+function resolveGatewayPort(vars: Record<string, string>): number {
+  const p = parseInt(vars.OPENCLAW_GATEWAY_PORT ?? "", 10);
+  return isNaN(p) ? ZEABUR_GATEWAY_PORT_DEFAULT : p;
+}
+
+function resolveGatewayToken(vars: Record<string, string>): string {
+  // OPENCLAW_GATEWAY_TOKEN may be a Zeabur variable reference like ${PASSWORD}
+  const raw = vars.OPENCLAW_GATEWAY_TOKEN ?? "";
+  const match = raw.match(/^\$\{(.+)\}$/);
+  if (match) return vars[match[1]] ?? "";
+  return raw || vars.PASSWORD || "";
+}
+
+async function zeaburCheckHealth(serviceId: string, port: number): Promise<{ running: boolean; healthy: boolean }> {
   try {
-    const url = `${zeabur.getInternalUrl(serviceId, ZEABUR_GATEWAY_PORT)}/__openclaw__/health`;
+    const url = `${zeabur.getInternalUrl(serviceId, port)}/__openclaw__/health`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
     const res = await fetch(url, { signal: controller.signal });
@@ -200,7 +213,7 @@ function extractConfigFields(config: Record<string, unknown>): {
     currentModel,
     availableModels,
     heartbeatEvery: (hb?.every as string) ?? null,
-    port: (gw?.port as number) ?? ZEABUR_GATEWAY_PORT,
+    port: (gw?.port as number) ?? ZEABUR_GATEWAY_PORT_DEFAULT,
     gatewayToken: (auth?.token as string) ?? "",
   };
 }
@@ -213,25 +226,28 @@ async function zeaburDiscoverAgent(agentId: string): Promise<AgentConfig> {
   // Get config via WS
   let config: Record<string, unknown> = {};
   let cronJobCount = 0;
+  let gatewayPort = ZEABUR_GATEWAY_PORT_DEFAULT;
+  let gatewayToken = "";
   try {
     const vars = await zeabur.getServiceVariables(svc.serviceId);
-    const token = vars.OPENCLAW_GATEWAY_TOKEN || "";
+    gatewayPort = resolveGatewayPort(vars);
+    gatewayToken = resolveGatewayToken(vars);
     config = await sendRequest<Record<string, unknown>>(
-      svc.serviceId, ZEABUR_GATEWAY_PORT, token, "config.get"
+      svc.serviceId, gatewayPort, gatewayToken, "config.get"
     );
 
     // Cache in agent map
-    agentMap.set(agentId, { serviceId: svc.serviceId, port: ZEABUR_GATEWAY_PORT, token });
+    agentMap.set(agentId, { serviceId: svc.serviceId, port: gatewayPort, token: gatewayToken });
 
     try {
       const cronResult = await sendRequest<{ jobs?: { enabled?: boolean }[] }>(
-        svc.serviceId, ZEABUR_GATEWAY_PORT, token, "cron.list"
+        svc.serviceId, gatewayPort, gatewayToken, "cron.list"
       );
       cronJobCount = (cronResult.jobs ?? []).filter((j) => j.enabled).length;
     } catch { /* cron not available */ }
   } catch { /* agent may be offline — use defaults */ }
 
-  const { currentModel, availableModels, heartbeatEvery, port, gatewayToken } = extractConfigFields(config);
+  const { currentModel, availableModels, heartbeatEvery } = extractConfigFields(config);
 
   // Read IDENTITY.md via executeCommand
   let name = agentId;
@@ -274,7 +290,7 @@ async function zeaburDiscoverAgent(agentId: string): Promise<AgentConfig> {
     name,
     vibe,
     emoji,
-    port,
+    port: gatewayPort,
     gatewayToken,
     moltbookName,
     moltbookRegistered,
@@ -292,7 +308,7 @@ async function zeaburDiscoverAgent(agentId: string): Promise<AgentConfig> {
 
 async function zeaburGetAgentStatus(agentId: string): Promise<AgentStatus> {
   const config = await zeaburDiscoverAgent(agentId);
-  const { running, healthy } = await zeaburCheckHealth(config.serviceId!);
+  const { running, healthy } = await zeaburCheckHealth(config.serviceId!, config.port);
   return { ...config, containerStatus: running ? "running" : "stopped", healthy };
 }
 
@@ -313,7 +329,7 @@ async function zeaburGetFleetOverview(): Promise<FleetOverview> {
             name: svc.name,
             vibe: "",
             emoji: "",
-            port: ZEABUR_GATEWAY_PORT,
+            port: ZEABUR_GATEWAY_PORT_DEFAULT,
             gatewayToken: "",
             moltbookName: null,
             moltbookRegistered: false,
