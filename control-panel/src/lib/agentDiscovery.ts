@@ -235,6 +235,10 @@ async function zeaburDiscoverAgent(agentId: string): Promise<AgentConfig> {
     config = await sendRequest<Record<string, unknown>>(
       svc.serviceId, gatewayPort, gatewayToken, "config.get"
     );
+    // config.get returns { path, exists, raw } — parse the raw JSON
+    if (typeof (config as { raw?: string }).raw === "string") {
+      try { config = JSON.parse((config as { raw: string }).raw); } catch { /* keep as-is */ }
+    }
 
     // Cache in agent map
     agentMap.set(agentId, { serviceId: svc.serviceId, port: gatewayPort, token: gatewayToken });

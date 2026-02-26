@@ -93,8 +93,9 @@ async function connectWs(
   ensureIdleSweep();
 
   const WS = await getWebSocket();
-  const url = `${getInternalUrl(serviceId, port).replace("http", "ws")}/__openclaw__/ws`;
-  const ws = new WS(url);
+  const host = getInternalUrl(serviceId, port).replace("http://", "");
+  const url = `ws://${host}/ws`;
+  const ws = new WS(url, { headers: { Origin: `http://${host}` } });
   const entry: PoolEntry = {
     ws,
     ready: false,
@@ -117,14 +118,15 @@ async function connectWs(
       if (msg.type === "event" && (msg as { event?: string }).event === "connect.challenge") {
         const connectId = crypto.randomUUID();
         ws.send(JSON.stringify({
-          type: "request",
+          type: "req",
           method: "connect",
           id: connectId,
           params: {
-            client: { id: "fleet-dashboard", displayName: "Fleet Dashboard", mode: "backend", version: "1.0.0" },
+            client: { id: "openclaw-control-ui", displayName: "Fleet Dashboard", mode: "cli", version: "1.0.0", platform: "linux" },
             auth: { token },
+            scopes: ["operator.read", "operator.write"],
             minProtocol: 1,
-            maxProtocol: 1,
+            maxProtocol: 3,
           },
         }));
         return;
@@ -146,9 +148,10 @@ async function connectWs(
           entry.pending.delete(id);
           clearTimeout(pending.timer);
           if ((msg as { ok?: boolean }).ok) {
-            pending.resolve((msg as { result?: unknown }).result ?? msg);
+            pending.resolve((msg as { payload?: unknown }).payload ?? msg);
           } else {
-            pending.reject(new Error((msg as { error?: string }).error ?? "WS request failed"));
+            const errShape = (msg as { error?: { message?: string } }).error;
+            pending.reject(new Error(errShape?.message ?? "WS request failed"));
           }
         }
       }
@@ -205,7 +208,7 @@ export async function sendRequest<T = unknown>(
           timer,
         });
 
-        entry.ws.send(JSON.stringify({ type: "request", method, id, params }));
+        entry.ws.send(JSON.stringify({ type: "req", method, id, params }));
         entry.lastUsed = Date.now();
       });
     } catch (err) {
