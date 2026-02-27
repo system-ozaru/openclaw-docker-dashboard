@@ -98,7 +98,7 @@ export async function createAgentService(
 ): Promise<{ serviceId: string }> {
   const data = await gql<{ service: { _id: string } }>(
     `mutation ($projectId: ObjectID!, $name: String!) {
-      service: createService(projectID: $projectId, template: "PREBUILT_V2", name: $name) {
+      service: createService(projectID: $projectId, template: PREBUILT_V2, name: $name) {
         _id
       }
     }`,
