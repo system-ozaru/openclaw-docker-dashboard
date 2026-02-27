@@ -28,6 +28,7 @@ interface PoolEntry {
   ready: boolean;
   lastUsed: number;
   pending: Map<string, PendingRequest>;
+  eventListeners: Map<string, (payload: unknown) => boolean>; // key → handler, return true to remove
   connectPromise?: Promise<void>;
 }
 
@@ -100,6 +101,7 @@ async function connectWs(
     ready: false,
     lastUsed: Date.now(),
     pending: new Map(),
+    eventListeners: new Map(),
   };
 
   entry.connectPromise = new Promise<void>((resolve, reject) => {
@@ -152,6 +154,14 @@ async function connectWs(
             const errShape = (msg as { error?: { message?: string } }).error;
             pending.reject(new Error(errShape?.message ?? "WS request failed"));
           }
+        }
+      }
+
+      // Step 4: route events to registered listeners
+      if (msg.type === "event") {
+        for (const [key, handler] of entry.eventListeners) {
+          const done = handler(msg);
+          if (done) entry.eventListeners.delete(key);
         }
       }
     });
@@ -243,4 +253,30 @@ export function closeConnection(serviceId: string, port: number) {
     entry.ws.close();
     pool.delete(key);
   }
+}
+
+// Wait for a specific WS event matching a predicate, returns the matching message payload
+export async function waitForEvent<T = unknown>(
+  serviceId: string,
+  port: number,
+  token: string,
+  predicate: (msg: WsMessage) => boolean,
+  timeoutMs = DEFAULT_TIMEOUT_MS
+): Promise<T> {
+  const entry = await connectWs(serviceId, port, token);
+  const listenerId = crypto.randomUUID();
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      entry.eventListeners.delete(listenerId);
+      reject(new Error("waitForEvent timeout"));
+    }, timeoutMs);
+    entry.eventListeners.set(listenerId, (msg) => {
+      if (predicate(msg as WsMessage)) {
+        clearTimeout(timer);
+        resolve((msg as WsMessage & { payload?: T }).payload as T ?? msg as unknown as T);
+        return true;
+      }
+      return false;
+    });
+  });
 }

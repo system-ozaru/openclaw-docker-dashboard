@@ -6,7 +6,7 @@ import type { MessageResult, MessagePayload } from "./types";
 import { isZeabur } from "./fleetMode";
 import { getAgentMeta } from "./agentDiscovery";
 import * as zeabur from "./zeaburService";
-import { sendRequest } from "./wsGateway";
+import { sendRequest, waitForEvent } from "./wsGateway";
 
 const execAsync = promisify(execCb);
 const FLEET_ROOT = path.resolve(process.cwd(), "..");
@@ -179,10 +179,8 @@ async function zeaburSendMessage(
   }
   if (!serviceId) throw new Error("Could not find service matching gateway token");
 
-  // chat.send is async — it returns {runId, status:"started"} immediately.
-  // We need to wait for the chat event with state="final" via a separate WS listener.
-  // Use a second sendRequest call pattern: subscribe to events then send.
-  // For simplicity, use the WS pool directly via a polling approach on chat.history.
+  // chat.send is async — returns {runId, status:"started"} immediately.
+  // Register event listener BEFORE sending so we don't miss the final event.
   const idempotencyKey = crypto.randomUUID();
 
   // Get sessionKey from sessions.list
@@ -193,34 +191,33 @@ async function zeaburSendMessage(
     ?.find((s) => s.sessionId === sessionId || s.key?.endsWith(sessionId))?.key
     ?? `agent:main:${sessionId}`;
 
-  await sendRequest<{ runId?: string; status?: string }>(
-    serviceId, port, token, "chat.send",
-    { sessionKey, idempotencyKey, message },
+  const start = Date.now();
+
+  // Start listening for the final chat event before sending
+  const eventPromise = waitForEvent<{
+    runId?: string; state?: string;
+    message?: { role?: string; content?: { type?: string; text?: string }[] | string };
+  }>(
+    serviceId, port, token,
+    (msg) => msg.event === "chat" &&
+      (msg.payload as { runId?: string; state?: string })?.runId === idempotencyKey &&
+      (msg.payload as { state?: string })?.state === "final",
     120000
   );
 
-  // Poll chat.history until we get a new final message (up to 60s)
-  const start = Date.now();
-  let finalText = "(no response)";
-  while (Date.now() - start < 60000) {
-    await new Promise((r) => setTimeout(r, 2000));
-    try {
-      const hist = await sendRequest<{ payload?: { messages?: { role?: string; content?: { type?: string; text?: string }[] | string }[] } }>(
-        serviceId, port, token, "chat.history", { sessionKey }
-      );
-      const msgs = (hist as { payload?: { messages?: unknown[] }; messages?: unknown[] }).payload?.messages
-        ?? (hist as { messages?: unknown[] }).messages ?? [];
-      const last = [...msgs].reverse().find((m: unknown) => (m as { role?: string }).role === "assistant");
-      if (last) {
-        const content = (last as { content?: unknown }).content;
-        if (typeof content === "string") finalText = content;
-        else if (Array.isArray(content)) {
-          finalText = (content as { type?: string; text?: string }[])
-            .filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n");
-        }
-        if (finalText) break;
-      }
-    } catch { /* retry */ }
+  await sendRequest<{ runId?: string; status?: string }>(
+    serviceId, port, token, "chat.send",
+    { sessionKey, idempotencyKey, message },
+    30000
+  );
+
+  const event = await eventPromise;
+  const content = event?.message?.content;
+  let finalText = "";
+  if (typeof content === "string") finalText = content;
+  else if (Array.isArray(content)) {
+    finalText = (content as { type?: string; text?: string }[])
+      .filter((c) => c.type === "text").map((c) => c.text ?? "").join("\n");
   }
 
   return {
