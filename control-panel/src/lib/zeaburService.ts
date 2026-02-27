@@ -59,7 +59,7 @@ export async function listAgentServices(bustCache = false): Promise<AgentService
 
   const agents: AgentServiceInfo[] = data.services.edges
     .map((e) => e.node)
-    .filter((s) => s.name.startsWith("OpenClaw-"))
+    .filter((s) => s.name.toLowerCase().startsWith("openclaw-"))
     .map((s) => ({
       serviceId: s._id,
       name: s.name,
@@ -95,11 +95,12 @@ export async function getServiceDetails(serviceId: string) {
 export async function createAgentService(
   name: string,
   envVars?: Record<string, string>
-): Promise<{ serviceId: string }> {
-  const data = await gql<{ service: { _id: string } }>(
+): Promise<{ serviceId: string; actualName: string }> {
+  const data = await gql<{ service: { _id: string; name: string } }>(
     `mutation ($projectId: ObjectID!, $name: String!) {
       service: createService(projectID: $projectId, template: PREBUILT_V2, name: $name) {
         _id
+        name
       }
     }`,
     { projectId: getProjectId(), name }
@@ -118,7 +119,7 @@ export async function createAgentService(
   }
 
   invalidateServiceCache();
-  return { serviceId };
+  return { serviceId, actualName: data.service.name };
 }
 
 export async function controlService(

@@ -146,7 +146,8 @@ async function createAgentZeabur(name: string, input: CreateAgentInput): Promise
     if (process.env.MINIMAX_API_KEY) envVars.MINIMAX_API_KEY = process.env.MINIMAX_API_KEY;
     if (process.env.ZEABUR_AI_HUB_API_KEY) envVars.ZEABUR_AI_HUB_API_KEY = process.env.ZEABUR_AI_HUB_API_KEY;
 
-    const { serviceId } = await zeabur.createAgentService(serviceName, envVars);
+    const { serviceId, actualName } = await zeabur.createAgentService(serviceName, envVars);
+    const resolvedServiceName = actualName;
 
     // Set port 18789 as HTTP
     await zeabur.updateServicePorts(serviceId, [{ id: "web", port: 18789, type: "HTTP" }]);
@@ -180,7 +181,7 @@ async function createAgentZeabur(name: string, input: CreateAgentInput): Promise
     } catch { /* service may not be ready yet — identity can be set later */ }
 
     zeabur.invalidateServiceCache();
-    return { agentId: serviceName, name, port: 18789, success: true };
+    return { agentId: resolvedServiceName, name, port: 18789, success: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { agentId: "unknown", name, port: 0, success: false, error: msg };
