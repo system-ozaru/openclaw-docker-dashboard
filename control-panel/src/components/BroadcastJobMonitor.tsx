@@ -1,13 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import BroadcastAgentChat from "./BroadcastAgentChat";
 import type { BroadcastJob, BroadcastProgressEvent, AgentJobResult } from "@/lib/broadcastTypes";
+import type { AgentStatus } from "@/lib/types";
+
+interface ChatMessage {
+  role: "user" | "agent";
+  text: string;
+}
 
 interface BroadcastJobMonitorProps {
   jobId: string;
   onClose: () => void;
   onFollowUp: (message: string, sessionId: string, agentIds: string[]) => void;
+  agents?: AgentStatus[];
 }
 
 const STATUS_ICON: Record<string, string> = {
@@ -31,16 +38,27 @@ const STATUS_COLOR: Record<string, string> = {
 };
 
 export default function BroadcastJobMonitor({
-  jobId, onClose, onFollowUp,
+  jobId, onClose, onFollowUp, agents,
 }: BroadcastJobMonitorProps) {
   const [job, setJob] = useState<BroadcastJob | null>(null);
   const [results, setResults] = useState<AgentJobResult[]>([]);
-  const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
+  const [expandedAgents, setExpandedAgents] = useState<Set<string>>(new Set());
   const [chatAgent, setChatAgent] = useState<AgentJobResult | null>(null);
   const [followUpText, setFollowUpText] = useState("");
   const [followUpSending, setFollowUpSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const autoScrollRef = useRef(true);
+
+  const agentStatusMap = new Map(agents?.map((a) => [a.id, a]) ?? []);
+
+  const toggleExpanded = useCallback((agentId: string) => {
+    setExpandedAgents((prev) => {
+      const next = new Set(prev);
+      if (next.has(agentId)) next.delete(agentId);
+      else next.add(agentId);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     fetch(`/api/fleet/broadcast/${jobId}`)
@@ -194,18 +212,17 @@ export default function BroadcastJobMonitor({
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="space-y-1 max-h-[24rem] overflow-y-auto"
+        className="space-y-1 max-h-[36rem] overflow-y-auto"
       >
         {results.map((r) => (
           <AgentResultRow
             key={r.agentId}
             result={r}
             sessionId={job.sessionId}
-            expanded={expandedAgent === r.agentId}
-            onToggle={() =>
-              setExpandedAgent(expandedAgent === r.agentId ? null : r.agentId)
-            }
+            expanded={expandedAgents.has(r.agentId)}
+            onToggle={() => toggleExpanded(r.agentId)}
             onChat={() => setChatAgent(r)}
+            agentStatus={agentStatusMap.get(r.agentId)}
           />
         ))}
       </div>
@@ -341,23 +358,90 @@ async function wakeAndSend(
   return { text };
 }
 
+function AgentStatusDot({ status }: { status?: AgentStatus }) {
+  if (!status) return null;
+  const isOnline = status.containerStatus === "running";
+  return (
+    <span
+      className="inline-block w-2 h-2 rounded-full shrink-0"
+      title={isOnline ? "Online" : "Sleeping"}
+      style={{ background: isOnline ? "var(--green)" : "var(--text-muted)" }}
+    />
+  );
+}
+
 function AgentResultRow({
-  result, sessionId, expanded, onToggle, onChat,
+  result, sessionId, expanded, onToggle, onChat, agentStatus,
 }: {
-  result: AgentJobResult; sessionId: string; expanded: boolean; onToggle: () => void; onChat: () => void;
+  result: AgentJobResult; sessionId: string; expanded: boolean;
+  onToggle: () => void; onChat: () => void; agentStatus?: AgentStatus;
 }) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
   const [replyText, setReplyText] = useState("");
   const [replyState, setReplyState] = useState<"idle" | "waking" | "sending">("idle");
-  const [replyResponse, setReplyResponse] = useState<string | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
 
   const hasResponse = result.responseText && result.status === "success";
   const isActive = result.status === "waking" || result.status === "sending";
   const isBusy = replyState !== "idle";
 
+  const scrollChatToBottom = useCallback(() => {
+    setTimeout(() => {
+      chatScrollRef.current?.scrollTo({
+        top: chatScrollRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }, 50);
+  }, []);
+
+  useEffect(() => {
+    if (!expanded || historyLoaded) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/agents/${result.agentId}/history?sessionId=${encodeURIComponent(sessionId)}`
+        );
+        if (cancelled) return;
+        if (res.ok) {
+          const data = await res.json();
+          const history: ChatMessage[] = (data.messages ?? []).map(
+            (m: { role: string; text: string }) => ({
+              role: m.role === "user" ? ("user" as const) : ("agent" as const),
+              text: m.text,
+            })
+          );
+          if (history.length > 0) {
+            setMessages(history);
+          } else if (result.responseText) {
+            setMessages([{ role: "agent", text: result.responseText }]);
+          }
+        } else if (result.responseText) {
+          setMessages([{ role: "agent", text: result.responseText }]);
+        }
+      } catch {
+        if (!cancelled && result.responseText) {
+          setMessages([{ role: "agent", text: result.responseText }]);
+        }
+      } finally {
+        if (!cancelled) setHistoryLoaded(true);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [expanded, historyLoaded, result.agentId, sessionId, result.responseText]);
+
+  useEffect(() => {
+    if (expanded && messages.length > 0) scrollChatToBottom();
+  }, [expanded, messages, scrollChatToBottom]);
+
   const handleReply = async () => {
     if (!replyText.trim() || isBusy) return;
     const msg = replyText.trim();
     setReplyText("");
+    setMessages((prev) => [...prev, { role: "user", text: msg }]);
     setReplyState("waking");
 
     try {
@@ -366,16 +450,23 @@ function AgentResultRow({
         () => setReplyState("waking")
       );
       setReplyState("idle");
-      if (error) {
-        setReplyResponse(`Error: ${text}`);
-      } else {
-        setReplyResponse(text);
-      }
+      setMessages((prev) => [
+        ...prev,
+        { role: "agent", text: error ? `Error: ${text}` : text },
+      ]);
     } catch {
       setReplyState("idle");
-      setReplyResponse("Error: failed to reach agent");
+      setMessages((prev) => [
+        ...prev,
+        { role: "agent", text: "Error: failed to reach agent" },
+      ]);
     }
   };
+
+  const isOnline = agentStatus?.containerStatus === "running";
+  const statusLabel = agentStatus
+    ? isOnline ? "online" : "sleeping"
+    : undefined;
 
   return (
     <div
@@ -393,9 +484,19 @@ function AgentResultRow({
     >
       <div className="flex items-center gap-2">
         <span className="text-sm">{result.emoji || "🤖"}</span>
-        <span className="text-xs font-medium flex-1" style={{ color: "var(--text-primary)" }}>
+        <AgentStatusDot status={agentStatus} />
+        <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
           {result.agentName}
         </span>
+        {statusLabel && (
+          <span
+            className="text-xs"
+            style={{ color: isOnline ? "var(--green)" : "var(--text-muted)" }}
+          >
+            {statusLabel}
+          </span>
+        )}
+        <span className="flex-1" />
         {hasResponse && expanded && (
           <button
             onClick={(e) => { e.stopPropagation(); onChat(); }}
@@ -418,13 +519,13 @@ function AgentResultRow({
             retry {result.retryCount}
           </span>
         )}
-        {hasResponse && expanded && (
+        {hasResponse && (
           <button
             onClick={(e) => { e.stopPropagation(); onToggle(); }}
             className="text-xs px-1 cursor-pointer"
             style={{ color: "var(--text-muted)" }}
           >
-            ▲
+            {expanded ? "▲" : "▼"}
           </button>
         )}
       </div>
@@ -441,20 +542,46 @@ function AgentResultRow({
       {hasResponse && expanded && (
         <div className="mt-2 space-y-2" onClick={(e) => e.stopPropagation()}>
           <div
-            className="text-xs whitespace-pre-wrap rounded p-2 max-h-40 overflow-y-auto"
-            style={{ background: "var(--bg-primary)", color: "var(--text-secondary)" }}
+            ref={chatScrollRef}
+            className="rounded p-2 max-h-52 overflow-y-auto space-y-1.5"
+            style={{ background: "var(--bg-primary)" }}
           >
-            {result.responseText}
+            {!historyLoaded && (
+              <div className="text-center py-3 text-xs" style={{ color: "var(--text-muted)" }}>
+                Loading conversation...
+              </div>
+            )}
+            {historyLoaded && messages.map((msg, i) => (
+              <div
+                key={i}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+              >
+                <div
+                  className="max-w-[85%] rounded-lg px-2.5 py-1.5 text-xs whitespace-pre-wrap"
+                  style={{
+                    background: msg.role === "user" ? "var(--accent-subtle)" : "var(--bg-hover)",
+                    color: msg.role === "user" ? "var(--accent)" : "var(--text-secondary)",
+                  }}
+                >
+                  {msg.text}
+                </div>
+              </div>
+            ))}
+            {isBusy && (
+              <div className="flex justify-start">
+                <div
+                  className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs"
+                  style={{ background: "var(--bg-hover)", color: "var(--text-muted)" }}
+                >
+                  <div
+                    className="w-2 h-2 border-2 rounded-full animate-spin"
+                    style={{ borderColor: "var(--accent)", borderTopColor: "transparent" }}
+                  />
+                  {replyState === "waking" ? "Waking..." : "Thinking..."}
+                </div>
+              </div>
+            )}
           </div>
-
-          {replyResponse && (
-            <div
-              className="text-xs whitespace-pre-wrap rounded p-2 max-h-40 overflow-y-auto"
-              style={{ background: "var(--bg-primary)", color: "var(--text-secondary)" }}
-            >
-              {replyResponse}
-            </div>
-          )}
 
           <div className="flex gap-1.5">
             <input

@@ -124,6 +124,7 @@ export default function BroadcastPanel({
           jobId={activeJobId}
           onClose={handleMonitorClose}
           onFollowUp={handleFollowUp}
+          agents={agents}
         />
         {conversationSessionId && (
           <div className="mt-3 flex justify-end">
