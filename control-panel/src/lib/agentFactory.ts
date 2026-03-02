@@ -1,22 +1,38 @@
 import { exec as execCb } from "child_process";
 import { promisify } from "util";
+import { readdir, readFile, writeFile, mkdir, copyFile, access } from "fs/promises";
 import path from "path";
 import crypto from "crypto";
-import { isZeabur } from "./fleetMode";
+import { isZeabur, isRelay } from "./fleetMode";
 import * as zeabur from "./zeaburService";
+import { relayPost } from "./relayClient";
 
 const execAsync = promisify(execCb);
 const FLEET_ROOT = path.resolve(process.cwd(), "..");
-const SCRIPT_PATH = path.join(FLEET_ROOT, "scripts", "create-agent.sh");
+const AGENTS_DIR = path.join(FLEET_ROOT, "agents");
+const TEMPLATES_DIR = path.join(FLEET_ROOT, "templates");
+const SHARED_SKILLS_DIR = path.join(FLEET_ROOT, "shared-skills");
+const PORT_BASE = 18700;
 
-const EXEC_OPTS = {
-  env: {
-    ...process.env,
-    PATH: `/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:${process.env.PATH || ""}`,
-    HOME: process.env.REAL_HOME || `/Users/${process.env.USER || "ozaru"}`,
-    DOCKER_CLI_HINTS: "false",
-  },
+const EXEC_ENV = {
+  ...process.env,
+  DOCKER_CLI_HINTS: "false",
 };
+
+async function loadEnvFile(): Promise<Record<string, string>> {
+  const vars: Record<string, string> = {};
+  try {
+    const content = await readFile(path.join(FLEET_ROOT, ".env"), "utf-8");
+    for (const line of content.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx < 0) continue;
+      vars[trimmed.slice(0, eqIdx)] = trimmed.slice(eqIdx + 1);
+    }
+  } catch { /* .env missing */ }
+  return vars;
+}
 
 const RANDOM_NAMES = [
   "Cipher", "Nyx", "Axiom", "Glitch", "Prism", "Rune", "Echo", "Drift",
@@ -79,44 +95,191 @@ export interface CreateAgentResult {
   error?: string;
 }
 
+async function createAgentRelay(name: string, input: CreateAgentInput): Promise<CreateAgentResult> {
+  try {
+    const res = await relayPost<{ created: CreateAgentResult[]; failed: CreateAgentResult[] }>("/api/agents/create", {
+      count: 1, name, ...input,
+    }, 60000);
+    return res.created[0] ?? res.failed[0] ?? { agentId: "unknown", name, port: 0, success: false, error: "No result" };
+  } catch (err) {
+    return { agentId: "unknown", name, port: 0, success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 export async function createAgent(input: CreateAgentInput): Promise<CreateAgentResult> {
   const name = input.name || generateUniqueName(0);
 
+  if (isRelay()) return createAgentRelay(name, input);
   if (isZeabur()) {
     return createAgentZeabur(name, input);
   }
   return createAgentDocker(name, input);
 }
 
-async function createAgentDocker(name: string, input: CreateAgentInput): Promise<CreateAgentResult> {
-  const args = [`--name "${name}" --start`];
-
-  if (input.vibe) args.push(`--vibe "${input.vibe}"`);
-  else args.push(`--vibe "${pickRandom(RANDOM_VIBES)}"`);
-
-  if (input.personality) args.push(`--personality "${input.personality}"`);
-  if (input.interests) args.push(`--interests "${input.interests}"`);
-  else args.push(`--interests "${pickRandom(RANDOM_INTERESTS)}"`);
-
-  if (input.emoji) args.push(`--emoji "${input.emoji}"`);
-  if (input.purpose) args.push(`--purpose "${input.purpose}"`);
-
+async function resolveNextAgentNumber(): Promise<number> {
+  let max = 0;
   try {
-    const { stdout } = await execAsync(
-      `cd "${FLEET_ROOT}" && bash "${SCRIPT_PATH}" ${args.join(" ")}`,
-      { timeout: 60000, ...EXEC_OPTS }
+    const entries = await readdir(AGENTS_DIR, { withFileTypes: true });
+    for (const e of entries) {
+      if (!e.isDirectory() || !e.name.startsWith("agent-")) continue;
+      const num = parseInt(e.name.replace("agent-", ""), 10);
+      if (!isNaN(num) && num > max) max = num;
+    }
+  } catch { /* agents dir may not exist yet */ }
+  return max + 1;
+}
+
+function fillTemplate(template: string, vars: Record<string, string>): string {
+  let result = template;
+  for (const [key, value] of Object.entries(vars)) {
+    result = result.replaceAll(key, value);
+  }
+  return result;
+}
+
+async function fileExists(p: string): Promise<boolean> {
+  try { await access(p); return true; } catch { return false; }
+}
+
+async function installMoltbookSkill(agentId: string): Promise<void> {
+  const skillDir = path.join(AGENTS_DIR, agentId, "workspace", "skills", "moltbook");
+  await mkdir(skillDir, { recursive: true });
+
+  const fleetSrc = path.join(SHARED_SKILLS_DIR, "moltbook", "fleet");
+  const officialSrc = path.join(SHARED_SKILLS_DIR, "moltbook");
+
+  const copies: [string, string][] = [
+    [path.join(fleetSrc, "SKILL.md"), path.join(skillDir, "SKILL.md")],
+    [path.join(fleetSrc, "API.md"), path.join(skillDir, "API.md")],
+    [path.join(officialSrc, "HEARTBEAT.md"), path.join(skillDir, "HEARTBEAT.md")],
+    [path.join(officialSrc, "MESSAGING.md"), path.join(skillDir, "MESSAGING.md")],
+    [path.join(officialSrc, "RULES.md"), path.join(skillDir, "RULES.md")],
+  ];
+
+  for (const [src, dst] of copies) {
+    if (await fileExists(src)) await copyFile(src, dst);
+  }
+
+  const credsPath = path.join(skillDir, ".credentials");
+  if (!(await fileExists(credsPath))) {
+    await writeFile(credsPath, "", "utf-8");
+  }
+}
+
+async function generateDockerCompose(): Promise<void> {
+  const entries = await readdir(AGENTS_DIR, { withFileTypes: true });
+  const agentIds = entries
+    .filter((e) => e.isDirectory() && e.name.startsWith("agent-"))
+    .map((e) => e.name)
+    .sort();
+
+  if (agentIds.length === 0) return;
+
+  let yaml = "services:\n";
+  for (const agentId of agentIds) {
+    const configPath = path.join(AGENTS_DIR, agentId, "openclaw.json");
+    let port = 0;
+    try {
+      const raw = await readFile(configPath, "utf-8");
+      const config = JSON.parse(raw);
+      port = config.gateway?.port ?? 0;
+    } catch { continue; }
+    if (!port) continue;
+
+    yaml += `  ${agentId}:\n`;
+    yaml += `    image: openclaw-fleet:latest\n`;
+    yaml += `    build: .\n`;
+    yaml += `    container_name: openclaw-${agentId}\n`;
+    yaml += `    volumes:\n`;
+    yaml += `      - ./agents/${agentId}:/home/openclaw/.openclaw\n`;
+    yaml += `    ports:\n`;
+    yaml += `      - "${port}:${port}"\n`;
+    yaml += `    env_file:\n`;
+    yaml += `      - .env\n`;
+    yaml += `    restart: unless-stopped\n`;
+    yaml += `    healthcheck:\n`;
+    yaml += `      test: ["CMD", "openclaw", "gateway", "health"]\n`;
+    yaml += `      interval: 30s\n`;
+    yaml += `      timeout: 10s\n`;
+    yaml += `      retries: 3\n`;
+    yaml += `      start_period: 15s\n`;
+  }
+
+  await writeFile(path.join(FLEET_ROOT, "docker-compose.yml"), yaml, "utf-8");
+}
+
+async function createAgentDocker(name: string, input: CreateAgentInput): Promise<CreateAgentResult> {
+  try {
+    await mkdir(AGENTS_DIR, { recursive: true });
+    const agentNum = await resolveNextAgentNumber();
+    const agentId = `agent-${String(agentNum).padStart(2, "0")}`;
+    const gatewayPort = PORT_BASE + agentNum;
+    const gatewayToken = crypto.randomBytes(24).toString("hex");
+
+    const vibe = input.vibe || pickRandom(RANDOM_VIBES);
+    const personality = input.personality || "A unique thinker with their own perspective on the world.";
+    const interests = input.interests || pickRandom(RANDOM_INTERESTS);
+    const emoji = input.emoji || pickRandomEmoji();
+    const purpose = input.purpose || "Community engagement and discussion";
+
+    const agentDir = path.join(AGENTS_DIR, agentId);
+    await mkdir(path.join(agentDir, "workspace", "skills"), { recursive: true });
+    await mkdir(path.join(agentDir, "credentials"), { recursive: true });
+
+    const envVars = await loadEnvFile();
+
+    const templateVars: Record<string, string> = {
+      "${CLAUDER_BASE_URL}": envVars.CLAUDER_BASE_URL || process.env.CLAUDER_BASE_URL || "https://www.ai-clauder.cc",
+      "${CLAUDER_API_KEY}": envVars.CLAUDER_API_KEY || process.env.CLAUDER_API_KEY || "",
+      "${GATEWAY_PORT}": String(gatewayPort),
+      "${GATEWAY_TOKEN}": gatewayToken,
+      "${AGENT_NAME}": name,
+      "${AGENT_VIBE}": vibe,
+      "${AGENT_PERSONALITY}": personality,
+      "${AGENT_INTERESTS}": interests,
+      "${AGENT_EMOJI}": emoji,
+      "${AGENT_ID}": agentId,
+      "${AGENT_PURPOSE}": purpose,
+    };
+
+    const tplFiles: [string, string][] = [
+      ["openclaw.json.tpl", "openclaw.json"],
+      ["IDENTITY.md.tpl", path.join("workspace", "IDENTITY.md")],
+      ["SOUL.md.tpl", path.join("workspace", "SOUL.md")],
+      ["USER.md.tpl", path.join("workspace", "USER.md")],
+    ];
+
+    for (const [tplName, outRel] of tplFiles) {
+      const tplContent = await readFile(path.join(TEMPLATES_DIR, tplName), "utf-8");
+      const filled = fillTemplate(tplContent, templateVars);
+      await writeFile(path.join(agentDir, outRel), filled, "utf-8");
+    }
+
+    await writeFile(
+      path.join(agentDir, "workspace", "HEARTBEAT.md"),
+      "# Heartbeat\n\nRead and follow your Moltbook heartbeat skill at skills/moltbook/HEARTBEAT.md\n",
+      "utf-8"
     );
 
-    const idMatch = stdout.match(/ID:\s+(agent-\d+)/);
-    const portMatch = stdout.match(/Port:\s+(\d+)/);
-    const agentId = idMatch?.[1] ?? "unknown";
-    const port = portMatch ? parseInt(portMatch[1]) : 0;
+    await installMoltbookSkill(agentId);
+    await generateDockerCompose();
 
-    return { agentId, name, port, success: true };
+    await execAsync(
+      `docker compose up -d ${agentId}`,
+      { timeout: 60000, cwd: FLEET_ROOT, env: EXEC_ENV }
+    );
+
+    return { agentId, name, port: gatewayPort, success: true };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return { agentId: "unknown", name, port: 0, success: false, error: msg };
   }
+}
+
+const RANDOM_EMOJIS = ["🔺", "🌀", "⚡", "🧿", "🎭", "🦊", "🐙", "🌶", "💎", "🛸", "🧠", "🎲", "🔮", "🌊", "🍄"];
+
+function pickRandomEmoji(): string {
+  return pickRandom(RANDOM_EMOJIS);
 }
 
 async function createAgentZeabur(name: string, input: CreateAgentInput): Promise<CreateAgentResult> {
@@ -142,7 +305,7 @@ async function createAgentZeabur(name: string, input: CreateAgentInput): Promise
     };
 
     // Copy provider keys from dashboard env if available
-    if (process.env.YUNYI_API_KEY) envVars.YUNYI_API_KEY = process.env.YUNYI_API_KEY;
+    if (process.env.CLAUDER_API_KEY) envVars.CLAUDER_API_KEY = process.env.CLAUDER_API_KEY;
     if (process.env.MINIMAX_API_KEY) envVars.MINIMAX_API_KEY = process.env.MINIMAX_API_KEY;
     if (process.env.ZEABUR_AI_HUB_API_KEY) envVars.ZEABUR_AI_HUB_API_KEY = process.env.ZEABUR_AI_HUB_API_KEY;
 

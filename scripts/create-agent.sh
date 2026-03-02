@@ -127,11 +127,11 @@ fi
 
 # --- Load shared API keys from .env ---
 
-yunyi_base_url=$(load_env_value "YUNYI_BASE_URL" "https://yunyi.rdzhvip.com/claude")
-yunyi_api_key=$(load_env_value "YUNYI_API_KEY" "")
+clauder_base_url=$(load_env_value "CLAUDER_BASE_URL" "https://www.ai-clauder.cc")
+clauder_api_key=$(load_env_value "CLAUDER_API_KEY" "")
 
-if [ -z "$yunyi_api_key" ]; then
-  echo "Error: YUNYI_API_KEY not found in $ENV_FILE"
+if [ -z "$clauder_api_key" ]; then
+  echo "Error: CLAUDER_API_KEY not found in $ENV_FILE"
   exit 1
 fi
 
@@ -145,10 +145,10 @@ echo "Creating $agent_id: \"$agent_name\" on port $gateway_port..."
 # --- Fill templates ---
 
 fill_template "$TEMPLATES_DIR/openclaw.json.tpl" "$agent_dir/openclaw.json" \
-  '${YUNYI_BASE_URL}'  "$yunyi_base_url" \
-  '${YUNYI_API_KEY}'   "$yunyi_api_key" \
-  '${GATEWAY_PORT}'    "$gateway_port" \
-  '${GATEWAY_TOKEN}'   "$gateway_token"
+  '${CLAUDER_BASE_URL}'  "$clauder_base_url" \
+  '${CLAUDER_API_KEY}'   "$clauder_api_key" \
+  '${GATEWAY_PORT}'      "$gateway_port" \
+  '${GATEWAY_TOKEN}'     "$gateway_token"
 
 fill_template "$TEMPLATES_DIR/SOUL.md.tpl" "$agent_dir/workspace/SOUL.md" \
   '${AGENT_NAME}'        "$agent_name" \

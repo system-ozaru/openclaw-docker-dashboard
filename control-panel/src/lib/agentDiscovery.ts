@@ -1,8 +1,9 @@
 import { readdir, readFile, writeFile, access } from "fs/promises";
 import path from "path";
 import type { AgentConfig, AgentStatus, FleetOverview, ModelOption, MoltbookClaimStatus } from "./types";
-import { isZeabur } from "./fleetMode";
+import { isZeabur, isRelay } from "./fleetMode";
 import * as zeabur from "./zeaburService";
+import { relayGet, relayPost } from "./relayClient";
 import { sendRequest } from "./wsGateway";
 
 const FLEET_ROOT = path.resolve(process.cwd(), "..");
@@ -368,20 +369,43 @@ async function zeaburSetAgentModel(agentId: string, modelFullId: string): Promis
   );
 }
 
+// ===================== Relay mode =====================
+
+async function relayGetFleetOverview(): Promise<FleetOverview> {
+  return relayGet<FleetOverview>("/api/fleet");
+}
+
+async function relayGetAgentStatus(agentId: string): Promise<AgentStatus> {
+  return relayGet<AgentStatus>(`/api/agents/${agentId}`);
+}
+
+async function relayDiscoverAgent(agentId: string): Promise<AgentConfig> {
+  const status = await relayGetAgentStatus(agentId);
+  return status;
+}
+
+async function relaySetAgentModel(agentId: string, modelFullId: string): Promise<void> {
+  await relayPost(`/api/agents/${agentId}/model`, { modelFullId });
+}
+
 // ===================== Public API — delegates by mode =====================
 
 export async function discoverAgent(agentId: string): Promise<AgentConfig> {
+  if (isRelay()) return relayDiscoverAgent(agentId);
   return isZeabur() ? zeaburDiscoverAgent(agentId) : dockerDiscoverAgent(agentId);
 }
 
 export async function setAgentModel(agentId: string, modelFullId: string): Promise<void> {
+  if (isRelay()) return relaySetAgentModel(agentId, modelFullId);
   return isZeabur() ? zeaburSetAgentModel(agentId, modelFullId) : dockerSetAgentModel(agentId, modelFullId);
 }
 
 export async function getAgentStatus(agentId: string): Promise<AgentStatus> {
+  if (isRelay()) return relayGetAgentStatus(agentId);
   return isZeabur() ? zeaburGetAgentStatus(agentId) : dockerGetAgentStatus(agentId);
 }
 
 export async function getFleetOverview(): Promise<FleetOverview> {
+  if (isRelay()) return relayGetFleetOverview();
   return isZeabur() ? zeaburGetFleetOverview() : dockerGetFleetOverview();
 }

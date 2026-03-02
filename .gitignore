@@ -9,3 +9,4 @@ deploy/agent-01/.env
 deploy/agent-01/config/
 .claude/
 .playwright-mcp/
+relay/node_modules/

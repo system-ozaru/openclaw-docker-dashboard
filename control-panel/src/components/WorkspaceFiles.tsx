@@ -2,11 +2,23 @@
 
 import { useState, useEffect, useCallback } from "react";
 
+type FileGroup = "config" | "workspace" | "skill" | "internal";
+
 interface FileEntry {
   name: string;
   relativePath: string;
-  group: "workspace" | "skill";
+  group: FileGroup;
+  readonly?: boolean;
 }
+
+const GROUP_LABELS: Record<FileGroup, string> = {
+  config: "Config",
+  workspace: "Workspace",
+  skill: "Skills",
+  internal: "Internal",
+};
+
+const GROUP_ORDER: FileGroup[] = ["config", "workspace", "skill", "internal"];
 
 interface WorkspaceFilesProps {
   agentId: string;
@@ -15,6 +27,7 @@ interface WorkspaceFilesProps {
 export default function WorkspaceFiles({ agentId }: WorkspaceFilesProps) {
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
+  const [activeReadonly, setActiveReadonly] = useState(false);
   const [content, setContent] = useState("");
   const [draft, setDraft] = useState("");
   const [editing, setEditing] = useState(false);
@@ -33,13 +46,14 @@ export default function WorkspaceFiles({ agentId }: WorkspaceFilesProps) {
 
   useEffect(() => { fetchFiles(); }, [fetchFiles]);
 
-  const loadFile = async (relativePath: string) => {
-    setActiveFile(relativePath);
+  const loadFile = async (entry: FileEntry) => {
+    setActiveFile(entry.relativePath);
+    setActiveReadonly(!!entry.readonly);
     setEditing(false);
     setSavedMsg(null);
     try {
       const res = await fetch(
-        `/api/agents/${agentId}/workspace?file=${encodeURIComponent(relativePath)}`
+        `/api/agents/${agentId}/workspace?file=${encodeURIComponent(entry.relativePath)}`
       );
       const data = await res.json();
       setContent(data.content ?? "");
@@ -68,8 +82,9 @@ export default function WorkspaceFiles({ agentId }: WorkspaceFilesProps) {
     setSaving(false);
   };
 
-  const wsFiles = files.filter((f) => f.group === "workspace");
-  const skillFiles = files.filter((f) => f.group === "skill");
+  const grouped = GROUP_ORDER
+    .map((g) => ({ group: g, items: files.filter((f) => f.group === g) }))
+    .filter((g) => g.items.length > 0);
 
   return (
     <div
@@ -86,7 +101,7 @@ export default function WorkspaceFiles({ agentId }: WorkspaceFilesProps) {
         style={{ borderColor: "var(--border)" }}
       >
         <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-          Workspace Files
+          Agent Files
         </span>
         <div className="flex items-center gap-2">
           {savedMsg && (
@@ -104,7 +119,7 @@ export default function WorkspaceFiles({ agentId }: WorkspaceFilesProps) {
       <div className="flex flex-1 min-h-0">
         {/* File list sidebar */}
         <div
-          className="w-40 shrink-0 border-r overflow-y-auto py-2"
+          className="w-44 shrink-0 border-r overflow-y-auto py-2"
           style={{ borderColor: "var(--border)" }}
         >
           {loading ? (
@@ -112,54 +127,38 @@ export default function WorkspaceFiles({ agentId }: WorkspaceFilesProps) {
               Loading...
             </div>
           ) : (
-            <>
-              {wsFiles.length > 0 && (
-                <div className="mb-2">
-                  <div
-                    className="px-3 py-1 text-xs font-medium uppercase tracking-wide"
-                    style={{ color: "var(--text-muted)" }}
-                  >
-                    Core
-                  </div>
-                  {wsFiles.map((f) => (
-                    <button
-                      key={f.relativePath}
-                      onClick={() => loadFile(f.relativePath)}
-                      className="w-full text-left px-3 py-1 text-xs cursor-pointer transition-colors truncate"
-                      style={{
-                        color: activeFile === f.relativePath ? "var(--accent)" : "var(--text-secondary)",
-                        background: activeFile === f.relativePath ? "var(--accent-subtle)" : "transparent",
-                      }}
-                    >
-                      {f.name}
-                    </button>
-                  ))}
+            grouped.map(({ group, items }) => (
+              <div key={group} className="mb-2">
+                <div
+                  className="px-3 py-1 text-xs font-medium uppercase tracking-wide"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  {GROUP_LABELS[group]}
                 </div>
-              )}
-              {skillFiles.length > 0 && (
-                <div>
-                  <div
-                    className="px-3 py-1 text-xs font-medium uppercase tracking-wide"
-                    style={{ color: "var(--text-muted)" }}
+                {items.map((f) => (
+                  <button
+                    key={f.relativePath}
+                    onClick={() => loadFile(f)}
+                    className="w-full text-left px-3 py-1 text-xs cursor-pointer transition-colors truncate"
+                    title={f.relativePath}
+                    style={{
+                      color: activeFile === f.relativePath ? "var(--accent)" : "var(--text-secondary)",
+                      background: activeFile === f.relativePath ? "var(--accent-subtle)" : "transparent",
+                    }}
                   >
-                    Skills
-                  </div>
-                  {skillFiles.map((f) => (
-                    <button
-                      key={f.relativePath}
-                      onClick={() => loadFile(f.relativePath)}
-                      className="w-full text-left px-3 py-1 text-xs cursor-pointer transition-colors truncate"
-                      style={{
-                        color: activeFile === f.relativePath ? "var(--accent)" : "var(--text-secondary)",
-                        background: activeFile === f.relativePath ? "var(--accent-subtle)" : "transparent",
-                      }}
-                    >
-                      {f.name}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </>
+                    {f.name}
+                    {f.readonly && (
+                      <span
+                        className="ml-1 text-[9px] opacity-50"
+                        style={{ color: "var(--text-muted)" }}
+                      >
+                        RO
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            ))
           )}
         </div>
 
@@ -207,6 +206,15 @@ export default function WorkspaceFiles({ agentId }: WorkspaceFilesProps) {
             </>
           ) : (
             <>
+              <div className="flex items-center px-3 py-1.5 border-b shrink-0" style={{ borderColor: "var(--border)" }}>
+                <span
+                  className="text-[10px] font-mono truncate"
+                  style={{ color: "var(--text-muted)" }}
+                  title={activeFile}
+                >
+                  {activeFile}
+                </span>
+              </div>
               <pre
                 className="flex-1 text-xs p-3 overflow-auto"
                 style={{
@@ -219,18 +227,20 @@ export default function WorkspaceFiles({ agentId }: WorkspaceFilesProps) {
               >
                 {content}
               </pre>
-              <div
-                className="flex items-center px-3 py-2 border-t shrink-0"
-                style={{ borderColor: "var(--border)" }}
-              >
-                <button
-                  onClick={() => { setDraft(content); setEditing(true); }}
-                  className="text-xs px-3 py-1 rounded cursor-pointer"
-                  style={{ background: "var(--accent-subtle)", color: "var(--accent)" }}
+              {!activeReadonly && (
+                <div
+                  className="flex items-center px-3 py-2 border-t shrink-0"
+                  style={{ borderColor: "var(--border)" }}
                 >
-                  Edit
-                </button>
-              </div>
+                  <button
+                    onClick={() => { setDraft(content); setEditing(true); }}
+                    className="text-xs px-3 py-1 rounded cursor-pointer"
+                    style={{ background: "var(--accent-subtle)", color: "var(--accent)" }}
+                  >
+                    Edit
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>

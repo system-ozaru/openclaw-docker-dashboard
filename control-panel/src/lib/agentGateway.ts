@@ -3,8 +3,9 @@ import { promisify } from "util";
 import crypto from "crypto";
 import path from "path";
 import type { MessageResult, MessagePayload } from "./types";
-import { isZeabur } from "./fleetMode";
+import { isZeabur, isRelay } from "./fleetMode";
 import { getAgentMeta } from "./agentDiscovery";
+import { relayGet, relayPost } from "./relayClient";
 import * as zeabur from "./zeaburService";
 import { sendRequest, waitForEvent } from "./wsGateway";
 
@@ -44,9 +45,9 @@ async function dockerSendMessage(
   port: number, token: string, sessionId: string, message: string
 ): Promise<MessageResult> {
   const name = `openclaw-agent-${String(port - 18700).padStart(2, "0")}`;
-  const escaped = message.replace(/'/g, "'\\''");
+  const escaped = message.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   const { stdout } = await run(
-    `docker exec ${name} openclaw agent --session-id "${sessionId}" --message '${escaped}' --json`,
+    `docker exec ${name} openclaw agent --session-id "${sessionId}" -m "${escaped}" --json`,
     120000
   );
   const result = JSON.parse(stdout);
@@ -346,32 +347,79 @@ async function zeaburControlContainer(
   }
 }
 
+// ===================== Relay mode =====================
+
+function resolveAgentIdFromPort(port: number): string {
+  return `agent-${String(port - 18700).padStart(2, "0")}`;
+}
+
+async function relaySendMessage(
+  port: number, _token: string, sessionId: string, message: string
+): Promise<MessageResult> {
+  return relayPost<MessageResult>(
+    "/api/agents/" + resolveAgentIdFromPort(port) + "/message",
+    { sessionId, message },
+    120000
+  );
+}
+
+async function relaySetModelLive(agentId: string, modelFullId: string): Promise<string> {
+  const res = await relayPost<{ model: string }>(`/api/agents/${agentId}/model`, { modelFullId });
+  return res.model;
+}
+
+async function relayGetLogs(agentId: string, tail: number): Promise<string> {
+  const res = await relayGet<{ logs: string }>(`/api/agents/${agentId}/logs?tail=${tail}`);
+  return res.logs;
+}
+
+async function relayGetSessionList(agentId: string): Promise<SessionInfo[]> {
+  const res = await relayGet<{ sessions: SessionInfo[] }>(`/api/agents/${agentId}/sessions`);
+  return res.sessions;
+}
+
+async function relayGetSessionHistory(agentId: string, sessionId: string): Promise<HistoryMessage[]> {
+  const res = await relayGet<{ messages: HistoryMessage[] }>(`/api/agents/${agentId}/history/${sessionId}`);
+  return res.messages;
+}
+
+async function relayControlContainer(agentId: string, action: "start" | "stop" | "restart"): Promise<string> {
+  const res = await relayPost<{ result: string }>(`/api/agents/${agentId}/control`, { action });
+  return res.result;
+}
+
 // ===================== Public API =====================
 
 export async function sendAgentMessage(
   port: number, token: string, sessionId: string, message: string
 ): Promise<MessageResult> {
+  if (isRelay()) return relaySendMessage(port, token, sessionId, message);
   return isZeabur()
     ? zeaburSendMessage(port, token, sessionId, message)
     : dockerSendMessage(port, token, sessionId, message);
 }
 
 export async function setModelLive(agentId: string, modelFullId: string): Promise<string> {
+  if (isRelay()) return relaySetModelLive(agentId, modelFullId);
   return isZeabur() ? zeaburSetModelLive(agentId, modelFullId) : dockerSetModelLive(agentId, modelFullId);
 }
 
 export async function getContainerLogs(agentId: string, tail = 50): Promise<string> {
+  if (isRelay()) return relayGetLogs(agentId, tail);
   return isZeabur() ? zeaburGetLogs(agentId) : dockerGetLogs(agentId, tail);
 }
 
 export async function getSessionList(agentId: string): Promise<SessionInfo[]> {
+  if (isRelay()) return relayGetSessionList(agentId);
   return isZeabur() ? zeaburGetSessionList(agentId) : dockerGetSessionList(agentId);
 }
 
 export async function getSessionHistory(agentId: string, sessionId: string): Promise<HistoryMessage[]> {
+  if (isRelay()) return relayGetSessionHistory(agentId, sessionId);
   return isZeabur() ? zeaburGetSessionHistory(agentId, sessionId) : dockerGetSessionHistory(agentId, sessionId);
 }
 
 export async function controlContainer(agentId: string, action: "start" | "stop" | "restart"): Promise<string> {
+  if (isRelay()) return relayControlContainer(agentId, action);
   return isZeabur() ? zeaburControlContainer(agentId, action) : dockerControlContainer(agentId, action);
 }

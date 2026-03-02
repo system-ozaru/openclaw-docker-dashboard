@@ -1,7 +1,8 @@
 import { controlContainer } from "./agentGateway";
-import { isZeabur } from "./fleetMode";
+import { isZeabur, isRelay } from "./fleetMode";
 import { getAgentMeta } from "./agentDiscovery";
 import * as zeabur from "./zeaburService";
+import { relayPost } from "./relayClient";
 
 interface IdleTimer {
   agentId: string;
@@ -16,6 +17,10 @@ export async function ensureAgentRunning(
   port: number,
   maxWaitMs = 30000
 ): Promise<boolean> {
+  if (isRelay()) {
+    const res = await relayPost<{ healthy: boolean }>(`/api/agents/${agentId}/wake`, {});
+    return res.healthy;
+  }
   if (isZeabur()) {
     const meta = getAgentMeta(agentId);
     if (!meta) return false;
