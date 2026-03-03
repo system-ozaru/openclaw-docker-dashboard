@@ -1,82 +1,135 @@
-import { readdir, readFile, writeFile, mkdir, unlink } from "fs/promises";
-import path from "path";
+import { supabase } from "./supabase";
 import type { BroadcastJob, AgentJobResult } from "./broadcastTypes";
 
-const FLEET_ROOT = path.resolve(process.cwd(), "..");
-const DEFAULT_STORE_DIR = path.join(FLEET_ROOT, "data", "broadcast");
-const STORE_DIR = process.env.BROADCAST_STORE_PATH || DEFAULT_STORE_DIR;
-const MAX_AGE_DAYS = 7;
-
-let dirReady = false;
-
-async function ensureDir() {
-  if (dirReady) return;
-  await mkdir(STORE_DIR, { recursive: true });
-  dirReady = true;
-}
-
-function stripResponseText(results: AgentJobResult[]): AgentJobResult[] {
-  return results.map(({ responseText, ...rest }) => rest);
-}
+// ---------------------------------------------------------------------------
+// Save a completed job + its per-agent results to Supabase.
+// Falls back silently if Supabase is unavailable.
+// ---------------------------------------------------------------------------
 
 export async function saveJob(job: BroadcastJob): Promise<void> {
-  try {
-    await ensureDir();
-    const sanitized: BroadcastJob = {
-      ...job,
-      results: stripResponseText(job.results),
-    };
-    const filePath = path.join(STORE_DIR, `${job.id}.json`);
-    await writeFile(filePath, JSON.stringify(sanitized, null, 2), "utf-8");
-    pruneExpired().catch(() => {});
-  } catch { /* fire-and-forget — don't break the broadcast flow */ }
-}
+  if (!supabase) return;
 
-export async function loadAll(): Promise<BroadcastJob[]> {
   try {
-    await ensureDir();
-    const entries = await readdir(STORE_DIR);
-    const jsonFiles = entries.filter((f) => f.endsWith(".json"));
+    const { error: jobErr } = await supabase
+      .from("openclaw_broadcast_jobs")
+      .upsert(
+        {
+          id: job.id,
+          session_id: job.sessionId,
+          message: job.message,
+          config: job.config,
+          status: job.status,
+          created_at: job.createdAt,
+          started_at: job.startedAt ?? null,
+          completed_at: job.completedAt ?? null,
+          total_agents: job.totalAgents,
+          processed_count: job.processedCount,
+          success_count: job.successCount,
+          error_count: job.errorCount,
+        },
+        { onConflict: "id" }
+      );
 
-    const jobs: BroadcastJob[] = [];
-    for (const file of jsonFiles) {
-      try {
-        const raw = await readFile(path.join(STORE_DIR, file), "utf-8");
-        const job: BroadcastJob = JSON.parse(raw);
-        jobs.push(job);
-      } catch { /* skip malformed files */ }
+    if (jobErr) {
+      console.error("[broadcastStore] saveJob error:", jobErr.message);
+      return;
     }
 
-    jobs.sort((a, b) => b.createdAt - a.createdAt);
-    return jobs;
-  } catch {
-    return [];
+    if (job.results.length > 0) {
+      const rows = job.results.map((r) => ({
+        job_id: job.id,
+        agent_id: r.agentId,
+        agent_name: r.agentName,
+        emoji: r.emoji || "",
+        status: r.status,
+        response_text: r.responseText ?? null,
+        duration_ms: r.durationMs ?? null,
+        model: r.model ?? null,
+        error: r.error ?? null,
+        retry_count: r.retryCount,
+      }));
+
+      const { error: resErr } = await supabase
+        .from("openclaw_broadcast_results")
+        .upsert(rows, { onConflict: "job_id,agent_id" });
+
+      if (resErr) {
+        console.error("[broadcastStore] saveResults error:", resErr.message);
+      }
+    }
+  } catch (err) {
+    console.error("[broadcastStore] saveJob unexpected:", err);
   }
 }
 
-export async function pruneExpired(): Promise<number> {
-  const cutoff = Date.now() - MAX_AGE_DAYS * 24 * 60 * 60 * 1000;
-  let pruned = 0;
+// ---------------------------------------------------------------------------
+// Load all jobs (with results) from Supabase, newest first.
+// ---------------------------------------------------------------------------
+
+export async function loadAll(): Promise<BroadcastJob[]> {
+  if (!supabase) return [];
 
   try {
-    await ensureDir();
-    const entries = await readdir(STORE_DIR);
-    const jsonFiles = entries.filter((f) => f.endsWith(".json"));
+    const { data: jobRows, error: jobErr } = await supabase
+      .from("openclaw_broadcast_jobs")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(200);
 
-    for (const file of jsonFiles) {
-      try {
-        const filePath = path.join(STORE_DIR, file);
-        const raw = await readFile(filePath, "utf-8");
-        const job: { completedAt?: number; createdAt?: number } = JSON.parse(raw);
-        const timestamp = job.completedAt ?? job.createdAt ?? 0;
-
-        if (timestamp > 0 && timestamp < cutoff) {
-          await unlink(filePath);
-          pruned++;
-        }
-      } catch { /* skip files we can't parse */ }
+    if (jobErr || !jobRows) {
+      console.error("[broadcastStore] loadAll error:", jobErr?.message);
+      return [];
     }
-  } catch { /* directory issues — ignore */ }
 
-  return pruned;
+    const jobIds = jobRows.map((j) => j.id);
+
+    let resultRows: Record<string, unknown>[] = [];
+    if (jobIds.length > 0) {
+      const { data, error: resErr } = await supabase
+        .from("openclaw_broadcast_results")
+        .select("*")
+        .in("job_id", jobIds);
+
+      if (resErr) {
+        console.error("[broadcastStore] loadResults error:", resErr.message);
+      }
+      resultRows = data ?? [];
+    }
+
+    const resultsByJob = new Map<string, AgentJobResult[]>();
+    for (const r of resultRows) {
+      const jobId = r.job_id as string;
+      if (!resultsByJob.has(jobId)) resultsByJob.set(jobId, []);
+      resultsByJob.get(jobId)!.push({
+        agentId: r.agent_id as string,
+        agentName: r.agent_name as string,
+        emoji: (r.emoji as string) || "",
+        status: r.status as AgentJobResult["status"],
+        responseText: (r.response_text as string) ?? undefined,
+        durationMs: (r.duration_ms as number) ?? undefined,
+        model: (r.model as string) ?? undefined,
+        error: (r.error as string) ?? undefined,
+        retryCount: (r.retry_count as number) || 0,
+      });
+    }
+
+    return jobRows.map((j) => ({
+      id: j.id as string,
+      sessionId: j.session_id as string,
+      message: j.message as string,
+      config: j.config as BroadcastJob["config"],
+      status: j.status as BroadcastJob["status"],
+      createdAt: j.created_at as number,
+      startedAt: (j.started_at as number) ?? undefined,
+      completedAt: (j.completed_at as number) ?? undefined,
+      totalAgents: j.total_agents as number,
+      processedCount: j.processed_count as number,
+      successCount: j.success_count as number,
+      errorCount: j.error_count as number,
+      results: resultsByJob.get(j.id as string) ?? [],
+    }));
+  } catch (err) {
+    console.error("[broadcastStore] loadAll unexpected:", err);
+    return [];
+  }
 }

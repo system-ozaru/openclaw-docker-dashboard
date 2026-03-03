@@ -39,6 +39,6 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-  const jobs = getAllJobs();
+  const jobs = await getAllJobs();
   return NextResponse.json({ jobs });
 }

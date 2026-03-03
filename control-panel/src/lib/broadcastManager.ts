@@ -18,7 +18,7 @@ const MAX_HISTORY = 200;
 
 let hydrated = false;
 
-async function hydrateFromDisk() {
+async function hydrateFromStore() {
   if (hydrated) return;
   hydrated = true;
   try {
@@ -30,10 +30,10 @@ async function hydrateFromDisk() {
     }
     jobHistory.sort((a, b) => b.createdAt - a.createdAt);
     if (jobHistory.length > MAX_HISTORY) jobHistory.length = MAX_HISTORY;
-  } catch { /* disk unavailable — start with empty history */ }
+  } catch { /* store unavailable — start with empty history */ }
 }
 
-hydrateFromDisk();
+hydrateFromStore();
 
 export function createBroadcastJob(
   message: string,
@@ -67,11 +67,13 @@ export function cancelBroadcastJob(jobId: string): boolean {
   return true;
 }
 
-export function getJob(jobId: string): BroadcastJob | undefined {
+export async function getJob(jobId: string): Promise<BroadcastJob | undefined> {
+  await hydrateFromStore();
   return activeJobs.get(jobId) ?? jobHistory.find((j) => j.id === jobId);
 }
 
-export function getAllJobs(): BroadcastJob[] {
+export async function getAllJobs(): Promise<BroadcastJob[]> {
+  await hydrateFromStore();
   const active = Array.from(activeJobs.values());
   return [...active, ...jobHistory].sort((a, b) => b.createdAt - a.createdAt);
 }
