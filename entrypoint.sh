@@ -24,4 +24,7 @@ EOF
   echo "[entrypoint] Initialized memory.md"
 fi
 
+# Allow token-only access over HTTP (no device pairing required)
+openclaw config set gateway.controlUi.allowInsecureAuth true 2>/dev/null || true
+
 exec openclaw gateway run --bind lan
