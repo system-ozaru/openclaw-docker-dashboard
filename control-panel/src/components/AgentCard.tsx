@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import StatusBadge from "./StatusBadge";
+import ProxyBadge from "./ProxyBadge";
 import type { AgentStatus, MoltbookClaimStatus } from "@/lib/types";
 
 interface AgentCardProps {
@@ -253,6 +254,7 @@ export default function AgentCard({
             {agent.cronJobCount}
           </span>
         )}
+        <ProxyBadge proxy={agent.proxy} />
       </div>
 
       <div

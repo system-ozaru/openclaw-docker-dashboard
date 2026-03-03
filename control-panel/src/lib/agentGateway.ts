@@ -147,6 +147,25 @@ async function dockerGetSessionHistory(agentId: string, sessionId: string): Prom
   } catch { return []; }
 }
 
+async function dockerExecCommand(agentId: string, command: string): Promise<string> {
+  const name = containerName(agentId);
+  const escaped = command.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  try {
+    const { stdout } = await run(
+      `docker exec ${name} openclaw ${escaped}`,
+      60000
+    );
+    return stdout;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("stdout:")) {
+      const match = msg.match(/stdout:\s*([\s\S]*?)(?:\nstderr:|$)/);
+      if (match) return match[1].trim() + "\n(command exited with error)";
+    }
+    return `Error: ${msg}`;
+  }
+}
+
 async function dockerControlContainer(agentId: string, action: "start" | "stop" | "restart"): Promise<string> {
   try {
     const { stdout } = await run(`cd "${FLEET_ROOT}" && docker compose ${action} ${agentId} 2>&1`);
@@ -388,6 +407,11 @@ async function relayControlContainer(agentId: string, action: "start" | "stop" |
   return res.result;
 }
 
+async function relayExecCommand(agentId: string, command: string): Promise<string> {
+  const res = await relayPost<{ output: string }>(`/api/agents/${agentId}/exec`, { command }, 60000);
+  return res.output;
+}
+
 // ===================== Public API =====================
 
 export async function sendAgentMessage(
@@ -422,4 +446,10 @@ export async function getSessionHistory(agentId: string, sessionId: string): Pro
 export async function controlContainer(agentId: string, action: "start" | "stop" | "restart"): Promise<string> {
   if (isRelay()) return relayControlContainer(agentId, action);
   return isZeabur() ? zeaburControlContainer(agentId, action) : dockerControlContainer(agentId, action);
+}
+
+export async function execCommand(agentId: string, command: string): Promise<string> {
+  if (isRelay()) return relayExecCommand(agentId, command);
+  if (isZeabur()) throw new Error("CLI exec is not supported in Zeabur mode");
+  return dockerExecCommand(agentId, command);
 }

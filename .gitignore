@@ -10,3 +10,5 @@ deploy/agent-01/config/
 .claude/
 .playwright-mcp/
 relay/node_modules/
+relay/logs/
+proxy-config.json

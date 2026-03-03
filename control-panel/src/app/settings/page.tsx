@@ -5,6 +5,7 @@ import Sidebar from "@/components/Sidebar";
 import TemplateEditorTab from "@/components/TemplateEditorTab";
 import FleetConfigTab from "@/components/FleetConfigTab";
 import AgentConfigTab from "@/components/AgentConfigTab";
+import ProxySettingsTab from "@/components/ProxySettingsTab";
 
 const tabs = [
   {
@@ -21,6 +22,11 @@ const tabs = [
     id: "agent",
     label: "Per-Agent",
     description: "Edit & test one agent",
+  },
+  {
+    id: "proxy",
+    label: "Proxy",
+    description: "Agent proxy & privacy",
   },
 ] as const;
 
@@ -41,7 +47,7 @@ export default function SettingsPage() {
             Settings
           </h1>
           <p className="text-sm mt-1" style={{ color: "var(--text-muted)" }}>
-            Manage openclaw.json configuration across the fleet
+            Manage configuration, templates, and proxy settings across the fleet
           </p>
         </div>
 
@@ -86,6 +92,7 @@ export default function SettingsPage() {
         {activeTab === "template" && <TemplateEditorTab />}
         {activeTab === "fleet" && <FleetConfigTab />}
         {activeTab === "agent" && <AgentConfigTab />}
+        {activeTab === "proxy" && <ProxySettingsTab />}
       </main>
     </div>
   );

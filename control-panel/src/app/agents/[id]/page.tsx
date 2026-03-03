@@ -11,6 +11,8 @@ import ModelSelector from "@/components/ModelSelector";
 import MoltbookClaimBadge from "@/components/MoltbookClaimBadge";
 import HeartbeatPanel from "@/components/HeartbeatPanel";
 import CronJobList from "@/components/CronJobList";
+import AgentTerminal from "@/components/AgentTerminal";
+import ProxyPanel from "@/components/ProxyPanel";
 import WorkspaceFiles from "@/components/WorkspaceFiles";
 import type { AgentStatus } from "@/lib/types";
 
@@ -211,6 +213,11 @@ export default function AgentDetail() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
           <ChatPanel agentId={agent.id} agentName={agent.name} />
           <LogViewer agentId={agent.id} />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <AgentTerminal agentId={agent.id} />
+          <ProxyPanel agentId={agent.id} proxyEnabled={agent.proxy?.enabled} />
         </div>
 
         {/* Workspace files */}

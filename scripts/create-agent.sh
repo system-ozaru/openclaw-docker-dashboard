@@ -129,6 +129,8 @@ fi
 
 clauder_base_url=$(load_env_value "CLAUDER_BASE_URL" "https://www.ai-clauder.cc")
 clauder_api_key=$(load_env_value "CLAUDER_API_KEY" "")
+openai_base_url=$(load_env_value "OPENAI_BASE_URL" "https://api.openai.com")
+openai_api_key=$(load_env_value "OPENAI_API_KEY" "")
 
 if [ -z "$clauder_api_key" ]; then
   echo "Error: CLAUDER_API_KEY not found in $ENV_FILE"
@@ -147,6 +149,8 @@ echo "Creating $agent_id: \"$agent_name\" on port $gateway_port..."
 fill_template "$TEMPLATES_DIR/openclaw.json.tpl" "$agent_dir/openclaw.json" \
   '${CLAUDER_BASE_URL}'  "$clauder_base_url" \
   '${CLAUDER_API_KEY}'   "$clauder_api_key" \
+  '${OPENAI_BASE_URL}'   "$openai_base_url" \
+  '${OPENAI_API_KEY}'    "$openai_api_key" \
   '${GATEWAY_PORT}'      "$gateway_port" \
   '${GATEWAY_TOKEN}'     "$gateway_token"
 

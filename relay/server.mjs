@@ -14,6 +14,7 @@ const FLEET_ROOT = path.resolve(__dirname, "..");
 const AGENTS_DIR = path.join(FLEET_ROOT, "agents");
 const TEMPLATES_DIR = path.join(FLEET_ROOT, "templates");
 const SHARED_SKILLS_DIR = path.join(FLEET_ROOT, "shared-skills");
+const PROXY_CONFIG_PATH = path.join(FLEET_ROOT, "proxy-config.json");
 const PORT_BASE = 18700;
 
 const RELAY_PORT = parseInt(process.env.RELAY_PORT || "3400", 10);
@@ -100,6 +101,49 @@ const RANDOM_VIBES = ["sharp, curious, slightly contrarian","chaotic, funny, irr
 const RANDOM_INTERESTS = ["AI ethics, philosophy, open source","memes, internet culture, gaming","science, astronomy, futurism","art, design, creative coding","history, politics, debate","music, film, pop culture","programming, systems design, math","psychology, behavior, decision-making","startups, economics, strategy","nature, ecology, sustainability"];
 const RANDOM_EMOJIS = ["🔺","🌀","⚡","🧿","🎭","🦊","🐙","🌶","💎","🛸","🧠","🎲","🔮","🌊","🍄"];
 
+// ─── Proxy Helpers ───────────────────────────────────────
+
+const DEFAULT_PROXY_CONFIG = {
+  defaultProvider: { type: "http-connect", host: "", port: 7777, username: "", password: "", sessionMode: "sticky", sessionPrefix: "openclaw" },
+  agents: {},
+};
+
+async function loadProxyConfig() {
+  try {
+    const raw = await readFile(PROXY_CONFIG_PATH, "utf-8");
+    return { ...DEFAULT_PROXY_CONFIG, ...JSON.parse(raw) };
+  } catch {
+    return { ...DEFAULT_PROXY_CONFIG };
+  }
+}
+
+async function saveProxyConfig(config) {
+  await writeFile(PROXY_CONFIG_PATH, JSON.stringify(config, null, 2), "utf-8");
+}
+
+function getAgentProxyInfo(proxyConfig, agentId) {
+  const agentOverride = proxyConfig.agents?.[agentId];
+  const enabled = agentOverride?.enabled ?? false;
+  if (!enabled) return { enabled: false };
+
+  const provider = agentOverride?.provider ?? proxyConfig.defaultProvider;
+  if (!provider?.host) return { enabled: false };
+
+  let username = provider.username || "";
+  const session = agentOverride?.session || agentId;
+  username = username.replace(/\{session\}/g, session);
+
+  return {
+    enabled: true,
+    type: provider.type || "http-connect",
+    host: provider.host,
+    port: provider.port || 7777,
+    username,
+    password: provider.password || "",
+    session,
+  };
+}
+
 // ─── Agent Discovery ────────────────────────────────────
 
 async function discoverAgent(agentId) {
@@ -151,6 +195,9 @@ async function discoverAgent(agentId) {
 
   const heartbeatEvery = config.agents?.defaults?.heartbeat?.every ?? null;
 
+  const proxyConfig = await loadProxyConfig();
+  const proxyInfo = getAgentProxyInfo(proxyConfig, agentId);
+
   return {
     id: agentId,
     name,
@@ -166,6 +213,13 @@ async function discoverAgent(agentId) {
     availableModels,
     heartbeatEvery,
     cronJobCount,
+    proxy: {
+      enabled: proxyInfo.enabled,
+      type: proxyInfo.type ?? null,
+      host: proxyInfo.host ?? null,
+      port: proxyInfo.port ?? null,
+      session: proxyInfo.session ?? null,
+    },
   };
 }
 
@@ -236,29 +290,77 @@ async function generateDockerCompose() {
 
   if (agentIds.length === 0) return;
 
+  const proxyConfig = await loadProxyConfig();
+
   let yaml = "services:\n";
   for (const agentId of agentIds) {
     const config = await safeReadJson(path.join(AGENTS_DIR, agentId, "openclaw.json"));
     const port = config?.gateway?.port;
     if (!port) continue;
 
-    yaml += `  ${agentId}:\n`;
-    yaml += `    image: openclaw-fleet:latest\n`;
-    yaml += `    build: .\n`;
-    yaml += `    container_name: openclaw-${agentId}\n`;
-    yaml += `    volumes:\n`;
-    yaml += `      - ./agents/${agentId}:/home/openclaw/.openclaw\n`;
-    yaml += `    ports:\n`;
-    yaml += `      - "${port}:${port}"\n`;
-    yaml += `    env_file:\n`;
-    yaml += `      - .env\n`;
-    yaml += `    restart: unless-stopped\n`;
-    yaml += `    healthcheck:\n`;
-    yaml += `      test: ["CMD", "openclaw", "gateway", "health"]\n`;
-    yaml += `      interval: 30s\n`;
-    yaml += `      timeout: 10s\n`;
-    yaml += `      retries: 3\n`;
-    yaml += `      start_period: 15s\n`;
+    const proxy = getAgentProxyInfo(proxyConfig, agentId);
+
+    if (proxy.enabled) {
+      const proxySvc = `proxy-${agentId}`;
+      yaml += `  ${proxySvc}:\n`;
+      yaml += `    build: ./proxy-sidecar\n`;
+      yaml += `    container_name: ${proxySvc}\n`;
+      yaml += `    cap_add:\n`;
+      yaml += `      - NET_ADMIN\n`;
+      yaml += `    environment:\n`;
+      yaml += `      - PROXY_TYPE=${proxy.type}\n`;
+      yaml += `      - PROXY_HOST=${proxy.host}\n`;
+      yaml += `      - PROXY_PORT=${proxy.port}\n`;
+      yaml += `      - PROXY_USER=${proxy.username}\n`;
+      yaml += `      - PROXY_PASS=${proxy.password}\n`;
+      yaml += `    ports:\n`;
+      yaml += `      - "${port}:${port}"\n`;
+      yaml += `    restart: unless-stopped\n`;
+      yaml += `    healthcheck:\n`;
+      yaml += `      test: ["CMD", "curl", "-sf", "--max-time", "5", "https://api.ipify.org"]\n`;
+      yaml += `      interval: 60s\n`;
+      yaml += `      timeout: 10s\n`;
+      yaml += `      retries: 3\n`;
+      yaml += `      start_period: 10s\n`;
+
+      yaml += `  ${agentId}:\n`;
+      yaml += `    image: openclaw-fleet:latest\n`;
+      yaml += `    build: .\n`;
+      yaml += `    container_name: openclaw-${agentId}\n`;
+      yaml += `    network_mode: "service:${proxySvc}"\n`;
+      yaml += `    volumes:\n`;
+      yaml += `      - ./agents/${agentId}:/home/openclaw/.openclaw\n`;
+      yaml += `    env_file:\n`;
+      yaml += `      - .env\n`;
+      yaml += `    depends_on:\n`;
+      yaml += `      ${proxySvc}:\n`;
+      yaml += `        condition: service_started\n`;
+      yaml += `    restart: unless-stopped\n`;
+      yaml += `    healthcheck:\n`;
+      yaml += `      test: ["CMD", "openclaw", "gateway", "health"]\n`;
+      yaml += `      interval: 30s\n`;
+      yaml += `      timeout: 10s\n`;
+      yaml += `      retries: 3\n`;
+      yaml += `      start_period: 15s\n`;
+    } else {
+      yaml += `  ${agentId}:\n`;
+      yaml += `    image: openclaw-fleet:latest\n`;
+      yaml += `    build: .\n`;
+      yaml += `    container_name: openclaw-${agentId}\n`;
+      yaml += `    volumes:\n`;
+      yaml += `      - ./agents/${agentId}:/home/openclaw/.openclaw\n`;
+      yaml += `    ports:\n`;
+      yaml += `      - "${port}:${port}"\n`;
+      yaml += `    env_file:\n`;
+      yaml += `      - .env\n`;
+      yaml += `    restart: unless-stopped\n`;
+      yaml += `    healthcheck:\n`;
+      yaml += `      test: ["CMD", "openclaw", "gateway", "health"]\n`;
+      yaml += `      interval: 30s\n`;
+      yaml += `      timeout: 10s\n`;
+      yaml += `      retries: 3\n`;
+      yaml += `      start_period: 15s\n`;
+    }
   }
 
   await writeFile(path.join(FLEET_ROOT, "docker-compose.yml"), yaml, "utf-8");
@@ -477,6 +579,32 @@ app.post("/api/agents/:id/message", async (req, res) => {
       durationMs: result.result?.meta?.durationMs ?? (Date.now() - start),
       model: meta ? `${meta.provider}/${meta.model}` : "unknown",
     });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 5b. Exec CLI Command ────────────────────────────────
+
+const BLOCKED_CMD = /^\s*(rm|del|format|mkfs|dd|shutdown|reboot|kill|pkill)\b/i;
+
+app.post("/api/agents/:id/exec", async (req, res) => {
+  try {
+    const { command } = req.body;
+    if (!command || typeof command !== "string") {
+      return res.status(400).json({ error: "command is required" });
+    }
+    const trimmed = command.trim();
+    if (BLOCKED_CMD.test(trimmed)) {
+      return res.status(403).json({ error: "This command is not allowed" });
+    }
+    const name = containerName(req.params.id);
+    const escaped = trimmed.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    const { stdout } = await run(
+      `docker exec ${name} openclaw ${escaped}`,
+      { timeout: 60000 }
+    );
+    res.json({ output: stdout });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -735,6 +863,8 @@ app.post("/api/agents/create", async (req, res) => {
         const templateVars = {
           "${CLAUDER_BASE_URL}": envVars.CLAUDER_BASE_URL || process.env.CLAUDER_BASE_URL || "https://www.ai-clauder.cc",
           "${CLAUDER_API_KEY}": envVars.CLAUDER_API_KEY || process.env.CLAUDER_API_KEY || "",
+          "${OPENAI_BASE_URL}": envVars.OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || "https://api.openai.com",
+          "${OPENAI_API_KEY}": envVars.OPENAI_API_KEY || process.env.OPENAI_API_KEY || "",
           "${GATEWAY_PORT}": String(gatewayPort),
           "${GATEWAY_TOKEN}": gatewayToken,
           "${AGENT_NAME}": agentName,
@@ -777,6 +907,176 @@ app.post("/api/agents/create", async (req, res) => {
     }
 
     res.json({ created, failed });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 15. Proxy Config ───────────────────────────────────
+
+app.get("/api/proxy/config", async (_req, res) => {
+  try {
+    const config = await loadProxyConfig();
+    const sanitized = { ...config };
+    if (sanitized.defaultProvider?.password) {
+      sanitized.defaultProvider = { ...sanitized.defaultProvider, password: "••••••" };
+    }
+    res.json(sanitized);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/proxy/config", async (req, res) => {
+  try {
+    const { defaultProvider, agents } = req.body;
+    const current = await loadProxyConfig();
+
+    if (defaultProvider) {
+      current.defaultProvider = { ...current.defaultProvider, ...defaultProvider };
+    }
+    if (agents !== undefined) {
+      current.agents = agents;
+    }
+
+    await saveProxyConfig(current);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/proxy/agent/:id", async (req, res) => {
+  try {
+    const { enabled, provider, session } = req.body;
+    const config = await loadProxyConfig();
+    if (!config.agents) config.agents = {};
+
+    config.agents[req.params.id] = {
+      ...config.agents[req.params.id],
+      enabled: enabled ?? config.agents[req.params.id]?.enabled ?? false,
+      session: session ?? req.params.id,
+    };
+
+    if (provider !== undefined) {
+      config.agents[req.params.id].provider = provider;
+    }
+
+    await saveProxyConfig(config);
+    res.json({ success: true, agent: config.agents[req.params.id] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 16. Proxy Health ───────────────────────────────────
+
+app.get("/api/proxy/health/:id", async (req, res) => {
+  try {
+    const proxyConfig = await loadProxyConfig();
+    const info = getAgentProxyInfo(proxyConfig, req.params.id);
+    if (!info.enabled) {
+      return res.json({ agentId: req.params.id, proxyEnabled: false });
+    }
+
+    const proxyContainer = `proxy-${req.params.id}`;
+    let containerRunning = false;
+    let publicIp = null;
+    let latencyMs = null;
+
+    try {
+      const { stdout } = await run(`docker inspect --format="{{.State.Running}}" ${proxyContainer}`, { timeout: 5000 });
+      containerRunning = stdout.trim() === "true";
+    } catch { /* not running */ }
+
+    if (containerRunning) {
+      try {
+        const start = Date.now();
+        const { stdout } = await run(
+          `docker exec ${proxyContainer} curl -sf --max-time 10 https://api.ipify.org`,
+          { timeout: 15000 }
+        );
+        latencyMs = Date.now() - start;
+        publicIp = stdout.trim();
+      } catch { /* proxy unreachable */ }
+    }
+
+    res.json({
+      agentId: req.params.id,
+      proxyEnabled: true,
+      proxyHealthy: !!publicIp,
+      publicIp,
+      latencyMs,
+      containerRunning,
+      proxyType: info.type,
+      proxyHost: info.host,
+      proxyPort: info.port,
+      session: info.session,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/proxy/health", async (_req, res) => {
+  try {
+    const proxyConfig = await loadProxyConfig();
+    const entries = await readdir(AGENTS_DIR, { withFileTypes: true });
+    const agentIds = entries
+      .filter(e => e.isDirectory() && e.name.startsWith("agent-"))
+      .map(e => e.name)
+      .sort();
+
+    const results = await Promise.all(agentIds.map(async (agentId) => {
+      const info = getAgentProxyInfo(proxyConfig, agentId);
+      if (!info.enabled) {
+        return { agentId, proxyEnabled: false };
+      }
+
+      const proxyContainer = `proxy-${agentId}`;
+      let containerRunning = false;
+      let publicIp = null;
+
+      try {
+        const { stdout } = await run(`docker inspect --format="{{.State.Running}}" ${proxyContainer}`, { timeout: 5000 });
+        containerRunning = stdout.trim() === "true";
+      } catch { /* not running */ }
+
+      if (containerRunning) {
+        try {
+          const { stdout } = await run(
+            `docker exec ${proxyContainer} curl -sf --max-time 8 https://api.ipify.org`,
+            { timeout: 12000 }
+          );
+          publicIp = stdout.trim();
+        } catch { /* proxy unreachable */ }
+      }
+
+      return {
+        agentId,
+        proxyEnabled: true,
+        proxyHealthy: !!publicIp,
+        publicIp,
+        containerRunning,
+        session: info.session,
+      };
+    }));
+
+    res.json({ proxies: results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── 17. Proxy Apply ────────────────────────────────────
+
+app.post("/api/proxy/apply", async (_req, res) => {
+  try {
+    await generateDockerCompose();
+
+    await run("docker compose up -d --remove-orphans 2>&1", { timeout: 120000 });
+
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

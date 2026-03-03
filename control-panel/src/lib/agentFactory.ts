@@ -240,6 +240,8 @@ async function createAgentDocker(name: string, input: CreateAgentInput): Promise
     const templateVars: Record<string, string> = {
       "${CLAUDER_BASE_URL}": envVars.CLAUDER_BASE_URL || process.env.CLAUDER_BASE_URL || "https://www.ai-clauder.cc",
       "${CLAUDER_API_KEY}": envVars.CLAUDER_API_KEY || process.env.CLAUDER_API_KEY || "",
+      "${OPENAI_BASE_URL}": envVars.OPENAI_BASE_URL || process.env.OPENAI_BASE_URL || "https://api.openai.com",
+      "${OPENAI_API_KEY}": envVars.OPENAI_API_KEY || process.env.OPENAI_API_KEY || "",
       "${GATEWAY_PORT}": String(gatewayPort),
       "${GATEWAY_TOKEN}": gatewayToken,
       "${AGENT_NAME}": name,
@@ -315,6 +317,7 @@ async function createAgentZeabur(name: string, input: CreateAgentInput): Promise
 
     // Copy provider keys from dashboard env if available
     if (process.env.CLAUDER_API_KEY) envVars.CLAUDER_API_KEY = process.env.CLAUDER_API_KEY;
+    if (process.env.OPENAI_API_KEY) envVars.OPENAI_API_KEY = process.env.OPENAI_API_KEY;
     if (process.env.MINIMAX_API_KEY) envVars.MINIMAX_API_KEY = process.env.MINIMAX_API_KEY;
     if (process.env.ZEABUR_AI_HUB_API_KEY) envVars.ZEABUR_AI_HUB_API_KEY = process.env.ZEABUR_AI_HUB_API_KEY;
 

@@ -22,6 +22,7 @@ export interface AgentConfig {
   availableModels: ModelOption[];
   heartbeatEvery: string | null;
   cronJobCount: number;
+  proxy?: ProxyInfo;
   serviceId?: string;
   internalHostname?: string;
   publicDomain?: string;
@@ -122,4 +123,48 @@ export interface CronJobInput {
   schedule: CronSchedule;
   payload: CronJobPayload;
   delivery?: CronJobDelivery;
+}
+
+// --- Proxy ---
+
+export interface ProxyInfo {
+  enabled: boolean;
+  type?: string | null;
+  host?: string | null;
+  port?: number | null;
+  session?: string | null;
+}
+
+export interface ProxyProvider {
+  type: string;
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  sessionMode: string;
+  sessionPrefix: string;
+}
+
+export interface ProxyAgentOverride {
+  enabled: boolean;
+  session?: string;
+  provider?: ProxyProvider | null;
+}
+
+export interface ProxyConfig {
+  defaultProvider: ProxyProvider;
+  agents: Record<string, ProxyAgentOverride>;
+}
+
+export interface ProxyHealthResult {
+  agentId: string;
+  proxyEnabled: boolean;
+  proxyHealthy?: boolean;
+  publicIp?: string | null;
+  latencyMs?: number | null;
+  containerRunning?: boolean;
+  proxyType?: string;
+  proxyHost?: string;
+  proxyPort?: number;
+  session?: string;
 }
