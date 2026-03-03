@@ -149,13 +149,12 @@ async function dockerGetSessionHistory(agentId: string, sessionId: string): Prom
 
 async function dockerExecCommand(agentId: string, command: string): Promise<string> {
   const name = containerName(agentId);
-  const escaped = command.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   try {
-    const { stdout } = await run(
-      `docker exec ${name} openclaw ${escaped}`,
+    const { stdout, stderr } = await run(
+      `docker exec ${name} sh -c ${JSON.stringify(command)}`,
       60000
     );
-    return stdout;
+    return (stdout + (stderr ? `\n${stderr}` : "")).trim();
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("stdout:")) {

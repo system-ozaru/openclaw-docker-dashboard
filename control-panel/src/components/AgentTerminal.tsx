@@ -13,8 +13,8 @@ interface TerminalEntry {
 
 const WELCOME = [
   { type: "system" as const, text: "OpenClaw Agent Terminal" },
-  { type: "system" as const, text: 'Type an openclaw subcommand (e.g. "status", "sessions --json", "doctor")' },
-  { type: "system" as const, text: 'Type "help" for available commands, "clear" to reset.\n' },
+  { type: "system" as const, text: 'Type any command (e.g. "openclaw status", "openclaw memory index", "ls")' },
+  { type: "system" as const, text: 'Type "clear" to reset.\n' },
 ];
 
 const HISTORY_MAX = 50;
@@ -148,13 +148,13 @@ export default function AgentTerminal({ agentId }: AgentTerminalProps) {
         style={{ fontFamily: "'SF Mono', 'Fira Code', monospace" }}
         onClick={() => inputRef.current?.focus()}
       >
-        {entries.map((entry, i) => (
+          {entries.map((entry, i) => (
           <div key={i} className="text-xs mb-0.5" style={{ lineHeight: "1.6" }}>
             {entry.type === "input" ? (
               <div>
                 <span style={{ color: "var(--green)" }}>openclaw@{agentId}</span>
                 <span style={{ color: "var(--text-muted)" }}>:~$ </span>
-                <span style={{ color: colorFor(entry.type) }}>openclaw {entry.text}</span>
+                <span style={{ color: colorFor(entry.type) }}>{entry.text}</span>
               </div>
             ) : (
               <pre
@@ -188,7 +188,7 @@ export default function AgentTerminal({ agentId }: AgentTerminalProps) {
             fontFamily: "'SF Mono', 'Fira Code', monospace",
           }}
         >
-          openclaw
+          $
         </span>
         <input
           ref={inputRef}
@@ -200,7 +200,7 @@ export default function AgentTerminal({ agentId }: AgentTerminalProps) {
           }}
           onKeyDown={handleKeyDown}
           disabled={running}
-          placeholder={running ? "Running..." : "status, sessions --json, doctor, config get ..."}
+          placeholder={running ? "Running..." : "openclaw status, openclaw memory index, ls, cat file.txt ..."}
           className="flex-1 bg-transparent text-xs outline-none"
           style={{
             color: "var(--text-primary)",
