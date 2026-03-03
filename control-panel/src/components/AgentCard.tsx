@@ -312,6 +312,24 @@ export default function AgentCard({
         >
           Detail
         </Link>
+        <a
+          href={
+            agent.publicDomain
+              ? `https://${agent.publicDomain}`
+              : `http://localhost:${agent.port}`
+          }
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Open agent dashboard in new tab"
+          className="flex items-center justify-center px-2 py-1.5 rounded border cursor-pointer transition-colors"
+          style={{
+            borderColor: "var(--border)",
+            color: "var(--text-muted)",
+            background: "transparent",
+          }}
+        >
+          ↗
+        </a>
       </div>
     </div>
   );

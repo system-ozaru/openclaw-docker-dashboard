@@ -104,6 +104,24 @@ export default function AgentDetail() {
             </div>
           </div>
           <div className="flex gap-2">
+            <a
+              href={
+                agent.publicDomain
+                  ? `https://${agent.publicDomain}`
+                  : `http://localhost:${agent.port}`
+              }
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded border text-xs cursor-pointer flex items-center gap-1.5"
+              style={{
+                borderColor: "var(--border)",
+                color: "var(--text-muted)",
+                background: "transparent",
+              }}
+              title={`Open agent gateway at port ${agent.port}`}
+            >
+              Open Dashboard ↗
+            </a>
             <button
               onClick={() => handleControl("restart")}
               className="px-3 py-1.5 rounded border text-xs cursor-pointer"
