@@ -213,14 +213,19 @@ export default function ProxyPanel({ agentId, proxyEnabled }: ProxyPanelProps) {
               />
             </div>
             <div>
-              <label className="text-xs block mb-1" style={{ color: "var(--text-muted)" }}>Username</label>
+              <label className="text-xs block mb-1" style={{ color: "var(--text-muted)" }}>
+                Username{" "}
+                <span style={{ color: "var(--accent)" }}>
+                  — use <code>{"{session}"}</code> for per-agent IPs
+                </span>
+              </label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full rounded border px-2 py-1.5 text-xs outline-none"
                 style={s.input}
-                placeholder="user-{session}"
+                placeholder={`user-{session}  →  becomes: user-openclaw-${agentId}`}
               />
             </div>
             <div>
@@ -234,8 +239,11 @@ export default function ProxyPanel({ agentId, proxyEnabled }: ProxyPanelProps) {
                 placeholder="Leave blank to keep current"
               />
             </div>
-            <div className="text-xs pt-0.5" style={{ color: "var(--text-muted)" }}>
-              Note: these are global settings shared by all agents.
+            <div
+              className="text-xs pt-0.5 px-2 py-1.5 rounded"
+              style={{ background: "var(--accent-subtle)", color: "var(--accent)" }}
+            >
+              Each agent gets its own IP — the <code>{"{session}"}</code> in the username is replaced with the agent ID (e.g. <code>openclaw-{agentId}</code>), giving it a unique sticky session from the provider. Provider credentials are shared; IPs are not.
             </div>
             <button
               onClick={handleSaveProvider}

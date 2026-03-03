@@ -12,6 +12,14 @@ export default function ProxySettingsTab() {
   const [checkingHealth, setCheckingHealth] = useState(false);
   const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
 
+  // Webshare integration
+  const [wsApiKey, setWsApiKey] = useState("");
+  const [wsTesting, setWsTesting] = useState(false);
+  const [wsAssigning, setWsAssigning] = useState(false);
+  const [wsProxyCount, setWsProxyCount] = useState<number | null>(null);
+  const [wsAssignments, setWsAssignments] = useState<{ agentId: string; ip: string; country: string }[]>([]);
+  const [wsMessage, setWsMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
   const [host, setHost] = useState("");
   const [port, setPort] = useState("7777");
   const [username, setUsername] = useState("");
@@ -133,12 +141,156 @@ export default function ProxySettingsTab() {
     })();
   }, []);
 
+  const handleWebshareTest = async () => {
+    if (!wsApiKey.trim()) return;
+    setWsTesting(true);
+    setWsMessage(null);
+    setWsProxyCount(null);
+    try {
+      const res = await fetch(`/api/proxy/webshare?apiKey=${encodeURIComponent(wsApiKey.trim())}`);
+      const data = await res.json();
+      if (data.error) {
+        setWsMessage({ type: "err", text: data.error });
+      } else {
+        setWsProxyCount(data.count);
+        setWsMessage({ type: "ok", text: `✓ Connected — ${data.count} valid proxies available` });
+      }
+    } catch {
+      setWsMessage({ type: "err", text: "Failed to reach Webshare API" });
+    }
+    setWsTesting(false);
+  };
+
+  const handleWebshareAssign = async () => {
+    if (!wsApiKey.trim()) return;
+    setWsAssigning(true);
+    setWsMessage(null);
+    setWsAssignments([]);
+    try {
+      const res = await fetch("/api/proxy/webshare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: wsApiKey.trim() }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setWsMessage({ type: "err", text: data.error });
+      } else {
+        setWsAssignments(data.assignments ?? []);
+        setWsMessage({
+          type: "ok",
+          text: `✓ Assigned ${data.proxiesAvailable} proxies across ${data.agentsConfigured} agents. Click Apply & Restart below to activate.`,
+        });
+      }
+    } catch {
+      setWsMessage({ type: "err", text: "Network error" });
+    }
+    setWsAssigning(false);
+  };
+
   if (loading) {
     return <div className="text-sm" style={{ color: "var(--text-muted)" }}>Loading proxy configuration...</div>;
   }
 
   return (
     <div className="space-y-6">
+      {/* ── Webshare.io Auto-assign ─────────────────────────────── */}
+      <div
+        className="rounded-lg border p-5"
+        style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
+      >
+        <div className="flex items-start justify-between mb-1">
+          <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+            Webshare.io Auto-assign
+          </h3>
+          <a
+            href="https://proxy.webshare.io/userapi/access"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs underline"
+            style={{ color: "var(--accent)" }}
+          >
+            Get API key ↗
+          </a>
+        </div>
+        <p className="text-xs mb-4" style={{ color: "var(--text-muted)" }}>
+          Paste your Webshare API key and click <strong>Auto-assign</strong> — each agent will be given its own
+          dedicated proxy IP and credentials automatically. No manual setup needed even for 200+ agents.
+        </p>
+
+        <div className="flex gap-2 mb-3">
+          <input
+            type="password"
+            value={wsApiKey}
+            onChange={(e) => setWsApiKey(e.target.value)}
+            className="flex-1 rounded border px-3 py-2 text-sm outline-none"
+            style={{ background: "var(--bg-primary)", borderColor: "var(--border)", color: "var(--text-primary)" }}
+            placeholder="Webshare API key"
+            onKeyDown={(e) => e.key === "Enter" && handleWebshareTest()}
+          />
+          <button
+            onClick={handleWebshareTest}
+            disabled={wsTesting || !wsApiKey.trim()}
+            className="text-xs px-3 py-2 rounded border cursor-pointer disabled:opacity-50"
+            style={{ borderColor: "var(--border)", color: "var(--text-secondary)", background: "transparent" }}
+          >
+            {wsTesting ? "Testing..." : "Test"}
+          </button>
+          <button
+            onClick={handleWebshareAssign}
+            disabled={wsAssigning || !wsApiKey.trim()}
+            className="text-xs px-4 py-2 rounded cursor-pointer disabled:opacity-50 font-medium"
+            style={{ background: "var(--accent)", color: "white" }}
+          >
+            {wsAssigning ? "Assigning..." : "Auto-assign"}
+          </button>
+        </div>
+
+        {wsMessage && (
+          <div
+            className="text-xs px-3 py-2 rounded mb-3"
+            style={{
+              background: wsMessage.type === "ok" ? "var(--green-subtle)" : "rgba(255,0,0,0.1)",
+              color: wsMessage.type === "ok" ? "var(--green)" : "var(--red)",
+            }}
+          >
+            {wsMessage.text}
+          </div>
+        )}
+
+        {wsAssignments.length > 0 && (
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            <div className="text-xs font-medium mb-1" style={{ color: "var(--text-muted)" }}>
+              Assignment preview ({wsAssignments.length} agents):
+            </div>
+            {wsAssignments.map((a) => (
+              <div
+                key={a.agentId}
+                className="flex items-center justify-between px-2 py-1 rounded text-xs"
+                style={{ background: "var(--bg-primary)" }}
+              >
+                <span style={{ color: "var(--text-secondary)" }}>{a.agentId}</span>
+                <span className="font-mono" style={{ color: "var(--accent)" }}>
+                  {a.ip}
+                </span>
+                <span
+                  className="px-1.5 py-0.5 rounded text-xs"
+                  style={{ background: "var(--accent-subtle)", color: "var(--accent)" }}
+                >
+                  {a.country}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {wsProxyCount !== null && wsAssignments.length === 0 && (
+          <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+            {wsProxyCount} proxies ready. Click <strong>Auto-assign</strong> to distribute them across your agents.
+          </div>
+        )}
+      </div>
+
       {/* Provider settings */}
       <div
         className="rounded-lg border p-5"
