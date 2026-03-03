@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import type { ProxyHealthResult } from "@/lib/types";
+import type { ProxyConfig, ProxyHealthResult } from "@/lib/types";
 
 interface ProxyPanelProps {
   agentId: string;
@@ -10,15 +10,40 @@ interface ProxyPanelProps {
 
 export default function ProxyPanel({ agentId, proxyEnabled }: ProxyPanelProps) {
   const [health, setHealth] = useState<ProxyHealthResult | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loadingHealth, setLoadingHealth] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [enabled, setEnabled] = useState(proxyEnabled ?? false);
   const [applying, setApplying] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+  const [showForm, setShowForm] = useState(false);
+
+  // Provider form state
+  const [host, setHost] = useState("");
+  const [port, setPort] = useState("7777");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [proxyType, setProxyType] = useState("http-connect");
+
+  // Load current provider config
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/proxy/config");
+        const data: ProxyConfig = await res.json();
+        const dp = data.defaultProvider;
+        setHost(dp.host || "");
+        setPort(String(dp.port || 7777));
+        setUsername(dp.username || "");
+        setPassword(dp.password === "••••••" ? "" : dp.password || "");
+        setProxyType(dp.type || "http-connect");
+      } catch { /* ignore */ }
+    })();
+  }, []);
 
   const fetchHealth = useCallback(async () => {
     if (!enabled) return;
-    setLoading(true);
+    setLoadingHealth(true);
     try {
       const res = await fetch(`/api/proxy/health/${agentId}`);
       const data = await res.json();
@@ -26,12 +51,10 @@ export default function ProxyPanel({ agentId, proxyEnabled }: ProxyPanelProps) {
     } catch {
       setHealth(null);
     }
-    setLoading(false);
+    setLoadingHealth(false);
   }, [agentId, enabled]);
 
-  useEffect(() => {
-    fetchHealth();
-  }, [fetchHealth]);
+  useEffect(() => { fetchHealth(); }, [fetchHealth]);
 
   const handleToggle = async () => {
     setToggling(true);
@@ -45,12 +68,44 @@ export default function ProxyPanel({ agentId, proxyEnabled }: ProxyPanelProps) {
       const data = await res.json();
       if (data.success) {
         setEnabled(!enabled);
-        setMessage(!enabled ? "Proxy enabled — click Apply to restart containers" : "Proxy disabled — click Apply to restart containers");
+        setMessage({ type: "ok", text: !enabled ? "Proxy enabled — click Apply to restart" : "Proxy disabled — click Apply to restart" });
       }
     } catch {
-      setMessage("Failed to update proxy config");
+      setMessage({ type: "err", text: "Failed to update proxy config" });
     }
     setToggling(false);
+  };
+
+  const handleSaveProvider = async () => {
+    setSaving(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/proxy/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          defaultProvider: {
+            type: proxyType,
+            host,
+            port: parseInt(port) || 7777,
+            username,
+            password: password || "••••••",
+            sessionMode: "sticky",
+            sessionPrefix: "openclaw",
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({ type: "ok", text: "Provider saved — click Apply to restart" });
+        setShowForm(false);
+      } else {
+        setMessage({ type: "err", text: data.error || "Save failed" });
+      }
+    } catch {
+      setMessage({ type: "err", text: "Network error" });
+    }
+    setSaving(false);
   };
 
   const handleApply = async () => {
@@ -60,15 +115,23 @@ export default function ProxyPanel({ agentId, proxyEnabled }: ProxyPanelProps) {
       const res = await fetch("/api/proxy/apply", { method: "POST" });
       const data = await res.json();
       if (data.success) {
-        setMessage("Proxy changes applied — containers restarting");
+        setMessage({ type: "ok", text: "Applied — containers restarting" });
         setTimeout(fetchHealth, 10000);
       } else {
-        setMessage(data.error || "Failed to apply");
+        setMessage({ type: "err", text: data.error || "Apply failed" });
       }
     } catch {
-      setMessage("Failed to apply proxy changes");
+      setMessage({ type: "err", text: "Failed to apply" });
     }
     setApplying(false);
+  };
+
+  const s = {
+    input: {
+      background: "var(--bg-primary)",
+      borderColor: "var(--border)",
+      color: "var(--text-primary)",
+    } as React.CSSProperties,
   };
 
   return (
@@ -76,6 +139,7 @@ export default function ProxyPanel({ agentId, proxyEnabled }: ProxyPanelProps) {
       className="rounded-lg border p-4"
       style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
     >
+      {/* Header row */}
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
           Proxy
@@ -85,16 +149,11 @@ export default function ProxyPanel({ agentId, proxyEnabled }: ProxyPanelProps) {
             onClick={handleToggle}
             disabled={toggling}
             className="relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer"
-            style={{
-              background: enabled ? "var(--accent)" : "var(--bg-secondary)",
-            }}
+            style={{ background: enabled ? "var(--accent)" : "var(--bg-secondary)" }}
           >
             <span
               className="inline-block h-3.5 w-3.5 rounded-full transition-transform"
-              style={{
-                background: "white",
-                transform: enabled ? "translateX(18px)" : "translateX(3px)",
-              }}
+              style={{ background: "white", transform: enabled ? "translateX(18px)" : "translateX(3px)" }}
             />
           </button>
           <span className="text-xs" style={{ color: "var(--text-muted)" }}>
@@ -103,61 +162,126 @@ export default function ProxyPanel({ agentId, proxyEnabled }: ProxyPanelProps) {
         </div>
       </div>
 
-      {enabled && (
-        <div className="space-y-2">
-          {loading && !health ? (
-            <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-              Checking proxy health...
+      {/* Provider config (always shown, collapsible) */}
+      <div className="mb-3">
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="text-xs flex items-center gap-1 cursor-pointer"
+          style={{ color: "var(--accent)" }}
+        >
+          {showForm ? "▾" : "▸"} {host ? `Provider: ${host}:${port}` : "Configure Proxy Provider"}
+        </button>
+
+        {showForm && (
+          <div className="mt-2 space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs block mb-1" style={{ color: "var(--text-muted)" }}>Type</label>
+                <select
+                  value={proxyType}
+                  onChange={(e) => setProxyType(e.target.value)}
+                  className="w-full rounded border px-2 py-1.5 text-xs outline-none"
+                  style={s.input}
+                >
+                  <option value="http-connect">HTTP Connect</option>
+                  <option value="http-relay">HTTP Relay</option>
+                  <option value="socks5">SOCKS5</option>
+                  <option value="socks4">SOCKS4</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs block mb-1" style={{ color: "var(--text-muted)" }}>Port</label>
+                <input
+                  type="number"
+                  value={port}
+                  onChange={(e) => setPort(e.target.value)}
+                  className="w-full rounded border px-2 py-1.5 text-xs outline-none"
+                  style={s.input}
+                  placeholder="7777"
+                />
+              </div>
             </div>
+            <div>
+              <label className="text-xs block mb-1" style={{ color: "var(--text-muted)" }}>Host</label>
+              <input
+                type="text"
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+                className="w-full rounded border px-2 py-1.5 text-xs outline-none"
+                style={s.input}
+                placeholder="gate.smartproxy.com"
+              />
+            </div>
+            <div>
+              <label className="text-xs block mb-1" style={{ color: "var(--text-muted)" }}>Username</label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full rounded border px-2 py-1.5 text-xs outline-none"
+                style={s.input}
+                placeholder="user-{session}"
+              />
+            </div>
+            <div>
+              <label className="text-xs block mb-1" style={{ color: "var(--text-muted)" }}>Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full rounded border px-2 py-1.5 text-xs outline-none"
+                style={s.input}
+                placeholder="Leave blank to keep current"
+              />
+            </div>
+            <div className="text-xs pt-0.5" style={{ color: "var(--text-muted)" }}>
+              Note: these are global settings shared by all agents.
+            </div>
+            <button
+              onClick={handleSaveProvider}
+              disabled={saving || !host.trim()}
+              className="text-xs px-3 py-1.5 rounded cursor-pointer disabled:opacity-50"
+              style={{ background: "var(--accent)", color: "white" }}
+            >
+              {saving ? "Saving..." : "Save Provider"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Health info when enabled */}
+      {enabled && (
+        <div className="space-y-1.5 mb-3">
+          {loadingHealth && !health ? (
+            <div className="text-xs" style={{ color: "var(--text-muted)" }}>Checking proxy health...</div>
           ) : health?.proxyEnabled ? (
-            <div className="space-y-1.5">
+            <>
               <div className="flex items-center gap-2">
                 <span
                   className="w-2 h-2 rounded-full"
-                  style={{
-                    background: health.proxyHealthy ? "var(--green)" : "var(--red)",
-                  }}
+                  style={{ background: health.proxyHealthy ? "var(--green)" : "var(--red)" }}
                 />
                 <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
                   {health.proxyHealthy ? "Proxy connected" : "Proxy unreachable"}
                 </span>
               </div>
-
               {health.publicIp && (
                 <div className="text-xs" style={{ color: "var(--text-muted)" }}>
                   Public IP: <span style={{ color: "var(--accent)" }}>{health.publicIp}</span>
                 </div>
               )}
-
               {health.latencyMs != null && (
-                <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  Latency: {health.latencyMs}ms
-                </div>
+                <div className="text-xs" style={{ color: "var(--text-muted)" }}>Latency: {health.latencyMs}ms</div>
               )}
-
-              <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                Type: {health.proxyType} &middot; {health.proxyHost}:{health.proxyPort}
-              </div>
-
-              {health.session && (
-                <div className="text-xs" style={{ color: "var(--text-muted)" }}>
-                  Session: {health.session}
-                </div>
-              )}
-
               <button
                 onClick={fetchHealth}
-                disabled={loading}
-                className="text-xs px-2 py-0.5 rounded border cursor-pointer mt-1"
-                style={{
-                  borderColor: "var(--border)",
-                  color: "var(--text-secondary)",
-                  background: "transparent",
-                }}
+                disabled={loadingHealth}
+                className="text-xs px-2 py-0.5 rounded border cursor-pointer"
+                style={{ borderColor: "var(--border)", color: "var(--text-secondary)", background: "transparent" }}
               >
-                {loading ? "Checking..." : "Refresh"}
+                {loadingHealth ? "Checking..." : "Refresh"}
               </button>
-            </div>
+            </>
           ) : (
             <div className="text-xs" style={{ color: "var(--text-muted)" }}>
               Proxy enabled but container not running. Click Apply to start.
@@ -166,32 +290,30 @@ export default function ProxyPanel({ agentId, proxyEnabled }: ProxyPanelProps) {
         </div>
       )}
 
+      {/* Message */}
       {message && (
         <div
-          className="text-xs mt-2 px-2 py-1 rounded"
+          className="text-xs mb-3 px-2 py-1 rounded"
           style={{
-            background: "var(--accent-subtle)",
-            color: "var(--accent)",
+            background: message.type === "ok" ? "var(--accent-subtle)" : "rgba(255,0,0,0.1)",
+            color: message.type === "ok" ? "var(--accent)" : "var(--red)",
           }}
         >
-          {message}
+          {message.text}
         </div>
       )}
 
-      <div className="mt-3 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
+      {/* Apply footer */}
+      <div className="pt-3 border-t flex items-center gap-2" style={{ borderColor: "var(--border)" }}>
         <button
           onClick={handleApply}
           disabled={applying}
-          className="text-xs px-3 py-1.5 rounded cursor-pointer"
-          style={{
-            background: "var(--accent)",
-            color: "white",
-            opacity: applying ? 0.6 : 1,
-          }}
+          className="text-xs px-3 py-1.5 rounded cursor-pointer disabled:opacity-60"
+          style={{ background: "var(--accent)", color: "white" }}
         >
           {applying ? "Applying..." : "Apply & Restart"}
         </button>
-        <span className="text-xs ml-2" style={{ color: "var(--text-muted)" }}>
+        <span className="text-xs" style={{ color: "var(--text-muted)" }}>
           Regenerates compose and restarts containers
         </span>
       </div>
