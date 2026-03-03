@@ -9,9 +9,8 @@ FROM node:22-slim
 WORKDIR /app
 # Standalone output contains its own node_modules & server.js
 COPY --from=builder /app/.next/standalone ./
-# Static assets & public must be added alongside standalone
+# Static assets must be added alongside standalone output
 COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
 ENV PORT=3333 HOSTNAME=0.0.0.0 FLEET_MODE=zeabur NODE_ENV=production
 EXPOSE 3333
 CMD ["node", "server.js"]
