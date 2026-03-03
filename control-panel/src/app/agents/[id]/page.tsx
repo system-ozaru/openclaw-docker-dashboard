@@ -107,8 +107,8 @@ export default function AgentDetail() {
             <a
               href={
                 agent.publicDomain
-                  ? `https://${agent.publicDomain}`
-                  : `http://localhost:${agent.port}`
+                  ? `https://${agent.publicDomain}?token=${agent.gatewayToken}`
+                  : `http://localhost:${agent.port}?token=${agent.gatewayToken}`
               }
               target="_blank"
               rel="noopener noreferrer"
