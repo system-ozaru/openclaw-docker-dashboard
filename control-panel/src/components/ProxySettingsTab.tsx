@@ -344,7 +344,7 @@ export default function ProxySettingsTab() {
               className="flex-1 px-3 py-2 text-sm outline-none"
               style={{ background: "var(--bg-primary)", color: "var(--text-primary)" }}
               placeholder="Webshare API key (saved in browser)"
-              onKeyDown={(e) => e.key === "Enter" && handleWebshareTest()}
+              onKeyDown={(e) => e.key === "Enter" && handleWebshareLoad()}
             />
             <button
               onClick={() => setWsShowKey(!wsShowKey)}
