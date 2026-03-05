@@ -78,7 +78,7 @@ export async function POST(request: Request) {
     }
 
     // 2. Get current agent list
-    const fleetData = await relayGet("/api/agents");
+    const fleetData = await relayGet("/api/agents") as { agents?: { id: string }[] };
     const agents: { id: string }[] = (fleetData.agents ?? []).sort(
       (a: { id: string }, b: { id: string }) => a.id.localeCompare(b.id)
     );
