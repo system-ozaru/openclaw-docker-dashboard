@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 const navSections = [
   {
@@ -21,6 +21,13 @@ const navSections = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  };
 
   return (
     <aside
@@ -76,8 +83,30 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <div className="p-4 text-xs" style={{ color: "var(--text-muted)" }}>
-        Fleet Control v1.5
+      <div className="p-4 border-t" style={{ borderColor: "var(--border)" }}>
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-sm cursor-pointer transition-colors"
+          style={{
+            color: "var(--text-muted)",
+            background: "transparent",
+            border: "none",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget.style.background = "var(--bg-hover)");
+            (e.currentTarget.style.color = "var(--red)");
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget.style.background = "transparent");
+            (e.currentTarget.style.color = "var(--text-muted)");
+          }}
+        >
+          <span className="text-xs">⏻</span>
+          Sign Out
+        </button>
+        <div className="text-xs mt-2 px-3" style={{ color: "var(--text-muted)" }}>
+          Fleet Control v1.5
+        </div>
       </div>
     </aside>
   );

@@ -39,7 +39,7 @@ async function fetchAllProxies(apiKey: string): Promise<WebshareProxy[]> {
   return all;
 }
 
-/** GET — test the API key and return proxy count + preview */
+/** GET — fetch the full proxy list (with credentials) for manual assignment */
 export async function GET(request: Request) {
   const apiKey = new URL(request.url).searchParams.get("apiKey");
   if (!apiKey) return NextResponse.json({ error: "apiKey required" }, { status: 400 });
@@ -48,9 +48,12 @@ export async function GET(request: Request) {
     const proxies = await fetchAllProxies(apiKey);
     return NextResponse.json({
       count: proxies.length,
-      preview: proxies.slice(0, 5).map((p) => ({
+      proxies: proxies.map((p) => ({
+        id: p.id,
         ip: p.proxy_address,
         port: p.port,
+        username: p.username,
+        password: p.password,
         country: p.country_code,
       })),
     });

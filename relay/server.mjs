@@ -305,21 +305,20 @@ async function generateDockerCompose() {
       yaml += `  ${proxySvc}:\n`;
       yaml += `    build: ./proxy-sidecar\n`;
       yaml += `    container_name: ${proxySvc}\n`;
-      yaml += `    cap_add:\n`;
-      yaml += `      - NET_ADMIN\n`;
       yaml += `    environment:\n`;
       yaml += `      - PROXY_TYPE=${proxy.type}\n`;
       yaml += `      - PROXY_HOST=${proxy.host}\n`;
       yaml += `      - PROXY_PORT=${proxy.port}\n`;
       yaml += `      - PROXY_USER=${proxy.username}\n`;
       yaml += `      - PROXY_PASS=${proxy.password}\n`;
+      yaml += `      - LOCAL_PORT=8888\n`;
       yaml += `    ports:\n`;
       yaml += `      - "${port}:${port}"\n`;
       yaml += `    restart: unless-stopped\n`;
       yaml += `    healthcheck:\n`;
-      yaml += `      test: ["CMD", "curl", "-sf", "--max-time", "5", "https://api.ipify.org"]\n`;
+      yaml += `      test: ["CMD", "curl", "-sf", "--max-time", "8", "--proxy", "http://127.0.0.1:8888", "https://api.ipify.org"]\n`;
       yaml += `      interval: 60s\n`;
-      yaml += `      timeout: 10s\n`;
+      yaml += `      timeout: 15s\n`;
       yaml += `      retries: 3\n`;
       yaml += `      start_period: 10s\n`;
 
@@ -332,6 +331,11 @@ async function generateDockerCompose() {
       yaml += `      - ./agents/${agentId}:/home/openclaw/.openclaw\n`;
       yaml += `    env_file:\n`;
       yaml += `      - .env\n`;
+      yaml += `    environment:\n`;
+      yaml += `      - HTTP_PROXY=http://127.0.0.1:8888\n`;
+      yaml += `      - HTTPS_PROXY=http://127.0.0.1:8888\n`;
+      yaml += `      - http_proxy=http://127.0.0.1:8888\n`;
+      yaml += `      - https_proxy=http://127.0.0.1:8888\n`;
       yaml += `    depends_on:\n`;
       yaml += `      ${proxySvc}:\n`;
       yaml += `        condition: service_started\n`;
@@ -503,12 +507,25 @@ app.get("/api/fleet", async (_req, res) => {
         const { running, healthy } = await checkHealth(config.port);
         return { ...config, containerStatus: running ? "running" : "stopped", healthy };
       } catch (err) {
+        let proxy = { enabled: false, type: null, host: null, port: null, session: null };
+        try {
+          const pc = await loadProxyConfig();
+          const pi = getAgentProxyInfo(pc, agentId);
+          proxy = {
+            enabled: pi.enabled,
+            type: pi.type ?? null,
+            host: pi.host ?? null,
+            port: pi.port ?? null,
+            session: pi.session ?? null,
+          };
+        } catch { /* ignore */ }
         return {
           id: agentId, name: agentId, vibe: "", emoji: "", port: 0,
           gatewayToken: "", moltbookName: null, moltbookRegistered: false,
           moltbookClaimUrl: null, moltbookClaimStatus: "unknown",
           currentModel: "unknown", availableModels: [], heartbeatEvery: null,
           cronJobCount: 0, containerStatus: "stopped", healthy: false,
+          proxy,
         };
       }
     }));
@@ -559,26 +576,40 @@ app.post("/api/agents/:id/message", async (req, res) => {
     const config = await discoverAgent(req.params.id);
     const name = containerName(req.params.id);
     const escaped = message.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-    const start = Date.now();
 
-    const { stdout } = await run(
-      `docker exec ${name} openclaw agent --session-id "${sessionId}" -m "${escaped}" --json`,
-      { timeout: 120000 }
-    );
+    async function tryMessage(sid) {
+      const start = Date.now();
+      const { stdout } = await run(
+        `docker exec ${name} openclaw agent --session-id "${sid}" -m "${escaped}" --json`,
+        { timeout: 120000 }
+      );
+      const result = JSON.parse(stdout);
+      const rawPayloads = result.result?.payloads ?? [];
+      const meta = result.result?.meta?.agentMeta;
+      const payloads = rawPayloads
+        .filter(p => p.text?.trim())
+        .map((p, i, arr) => ({ text: p.text.trim(), isFinal: i === arr.length - 1 }));
+      if (payloads.length === 0) payloads.push({ text: "(no response)", isFinal: true });
+      return {
+        payloads,
+        durationMs: result.result?.meta?.durationMs ?? (Date.now() - start),
+        model: meta ? `${meta.provider}/${meta.model}` : "unknown",
+      };
+    }
 
-    const result = JSON.parse(stdout);
-    const rawPayloads = result.result?.payloads ?? [];
-    const meta = result.result?.meta?.agentMeta;
-    const payloads = rawPayloads
-      .filter(p => p.text?.trim())
-      .map((p, i, arr) => ({ text: p.text.trim(), isFinal: i === arr.length - 1 }));
-    if (payloads.length === 0) payloads.push({ text: "(no response)", isFinal: true });
-
-    res.json({
-      payloads,
-      durationMs: result.result?.meta?.durationMs ?? (Date.now() - start),
-      model: meta ? `${meta.provider}/${meta.model}` : "unknown",
-    });
+    try {
+      const result = await tryMessage(sessionId);
+      res.json(result);
+    } catch (firstErr) {
+      const errMsg = (firstErr.message || "").toLowerCase();
+      if (errMsg.includes("ordering conflict") || errMsg.includes("message ordering")) {
+        const freshSessionId = `cp-${Date.now()}`;
+        const result = await tryMessage(freshSessionId);
+        res.json({ ...result, newSessionId: freshSessionId });
+      } else {
+        throw firstErr;
+      }
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -599,12 +630,11 @@ app.post("/api/agents/:id/exec", async (req, res) => {
       return res.status(403).json({ error: "This command is not allowed" });
     }
     const name = containerName(req.params.id);
-    const escaped = trimmed.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-    const { stdout } = await run(
-      `docker exec ${name} openclaw ${escaped}`,
+    const { stdout, stderr } = await run(
+      `docker exec ${name} sh -c ${JSON.stringify(trimmed)}`,
       { timeout: 60000 }
     );
-    res.json({ output: stdout });
+    res.json({ output: (stdout + (stderr ? `\n${stderr}` : "")).trim() });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -993,7 +1023,7 @@ app.get("/api/proxy/health/:id", async (req, res) => {
       try {
         const start = Date.now();
         const { stdout } = await run(
-          `docker exec ${proxyContainer} curl -sf --max-time 10 https://api.ipify.org`,
+          `docker exec ${proxyContainer} curl -sf --max-time 10 --proxy http://127.0.0.1:8888 https://api.ipify.org`,
           { timeout: 15000 }
         );
         latencyMs = Date.now() - start;
@@ -1068,6 +1098,38 @@ app.get("/api/proxy/health", async (_req, res) => {
   }
 });
 
+// ─── 17. Proxy Test (credentials, no container required) ────────────────────
+
+app.post("/api/proxy/test", async (req, res) => {
+  try {
+    const { host, port, username, password, type = "http-connect" } = req.body;
+    if (!host || !port) return res.status(400).json({ error: "host and port required" });
+
+    const scheme = type === "socks5" ? "socks5" : type === "socks4" ? "socks4" : "http";
+    const auth = username ? `${encodeURIComponent(username)}:${encodeURIComponent(password || "")}@` : "";
+    const proxyUrl = `${scheme}://${auth}${host}:${port}`;
+
+    const start = Date.now();
+    const { stdout } = await run(
+      `curl -sf --proxy "${proxyUrl}" --max-time 12 https://ipinfo.io/json`,
+      { timeout: 18000 }
+    );
+    const latencyMs = Date.now() - start;
+    let ip = null, country = null, org = null;
+    try {
+      const parsed = JSON.parse(stdout);
+      ip = parsed.ip || null;
+      country = parsed.country || null;
+      org = parsed.org || null;
+    } catch {
+      ip = stdout.trim();
+    }
+    res.json({ success: true, ip, country, org, latencyMs });
+  } catch (err) {
+    res.status(200).json({ success: false, error: "Proxy unreachable or credentials rejected", detail: err.message });
+  }
+});
+
 // ─── 17. Proxy Apply ────────────────────────────────────
 
 app.post("/api/proxy/apply", async (_req, res) => {
@@ -1076,6 +1138,21 @@ app.post("/api/proxy/apply", async (_req, res) => {
 
     await run("docker compose up -d --remove-orphans 2>&1", { timeout: 120000 });
 
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/proxy/apply/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    await generateDockerCompose();
+    // Bring up just this agent + its sidecar (if proxy enabled)
+    const proxyConfig = await loadProxyConfig();
+    const info = getAgentProxyInfo(proxyConfig, id);
+    const services = info.enabled ? `proxy-${id} ${id}` : id;
+    await run(`docker compose up -d ${services} 2>&1`, { timeout: 90000 });
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });

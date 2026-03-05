@@ -143,14 +143,25 @@ export default function ChatPanel({ agentId, agentName, onModelChanged }: ChatPa
         onModelChanged?.(data.model);
       }
 
+      if (data.newSessionId) {
+        setActiveSessionId(data.newSessionId);
+        setHistoryCount(0);
+        fetchSessions();
+      }
+
       const payloads: PayloadMsg[] = data.payloads || [
         { text: data.text || data.error || "No response", isFinal: true },
       ];
 
-      setMessages((prev) => [
-        ...prev,
-        { role: "agent", payloads, durationMs: data.durationMs, model: data.model },
-      ]);
+      setMessages((prev) => {
+        const msgs = data.newSessionId
+          ? [{ role: "user" as const, text }]
+          : prev;
+        return [
+          ...msgs,
+          { role: "agent", payloads, durationMs: data.durationMs, model: data.model },
+        ];
+      });
     } catch {
       setMessages((prev) => [
         ...prev,

@@ -6,57 +6,32 @@ PROXY_HOST="${PROXY_HOST:-}"
 PROXY_PORT="${PROXY_PORT:-7777}"
 PROXY_USER="${PROXY_USER:-}"
 PROXY_PASS="${PROXY_PASS:-}"
-REDSOCKS_PORT="${REDSOCKS_PORT:-12345}"
+LOCAL_PORT="${LOCAL_PORT:-8888}"
 
 if [ -z "$PROXY_HOST" ]; then
-  echo "[proxy-sidecar] PROXY_HOST not set — running in passthrough mode (no proxying)"
+  echo "[proxy-sidecar] PROXY_HOST not set — running in passthrough mode"
   exec sleep infinity
 fi
 
-echo "[proxy-sidecar] Configuring redsocks: ${PROXY_TYPE} -> ${PROXY_HOST}:${PROXY_PORT}"
+echo "[proxy-sidecar] Configuring tinyproxy -> ${PROXY_HOST}:${PROXY_PORT} (local port ${LOCAL_PORT})"
 
-LOGIN_LINE=""
-PASSWORD_LINE=""
-if [ -n "$PROXY_USER" ]; then
-  LOGIN_LINE="login = \"${PROXY_USER}\";"
+AUTH_LINE=""
+if [ -n "$PROXY_USER" ] && [ -n "$PROXY_PASS" ]; then
+  AUTH_LINE="Upstream http ${PROXY_USER}:${PROXY_PASS}@${PROXY_HOST}:${PROXY_PORT}"
+elif [ -n "$PROXY_USER" ]; then
+  AUTH_LINE="Upstream http ${PROXY_USER}@${PROXY_HOST}:${PROXY_PORT}"
+else
+  AUTH_LINE="Upstream http ${PROXY_HOST}:${PROXY_PORT}"
 fi
-if [ -n "$PROXY_PASS" ]; then
-  PASSWORD_LINE="password = \"${PROXY_PASS}\";"
-fi
 
-cat > /etc/redsocks.conf <<EOF
-base {
-  log_debug = off;
-  log_info = on;
-  log = stderr;
-  daemon = off;
-  redirector = iptables;
-}
-
-redsocks {
-  local_ip = 0.0.0.0;
-  local_port = ${REDSOCKS_PORT};
-  ip = ${PROXY_HOST};
-  port = ${PROXY_PORT};
-  type = ${PROXY_TYPE};
-  ${LOGIN_LINE}
-  ${PASSWORD_LINE}
-}
+cat > /etc/tinyproxy/tinyproxy.conf <<EOF
+Port ${LOCAL_PORT}
+Listen 127.0.0.1
+Timeout 600
+Allow 127.0.0.1
+${AUTH_LINE}
+LogLevel Error
 EOF
 
-iptables -t nat -N REDSOCKS 2>/dev/null || iptables -t nat -F REDSOCKS
-
-iptables -t nat -A REDSOCKS -d 0.0.0.0/8 -j RETURN
-iptables -t nat -A REDSOCKS -d 10.0.0.0/8 -j RETURN
-iptables -t nat -A REDSOCKS -d 127.0.0.0/8 -j RETURN
-iptables -t nat -A REDSOCKS -d 169.254.0.0/16 -j RETURN
-iptables -t nat -A REDSOCKS -d 172.16.0.0/12 -j RETURN
-iptables -t nat -A REDSOCKS -d 192.168.0.0/16 -j RETURN
-iptables -t nat -A REDSOCKS -d 224.0.0.0/4 -j RETURN
-iptables -t nat -A REDSOCKS -d 240.0.0.0/4 -j RETURN
-iptables -t nat -A REDSOCKS -p tcp -j REDIRECT --to-ports ${REDSOCKS_PORT}
-
-iptables -t nat -A OUTPUT -p tcp -j REDSOCKS
-
-echo "[proxy-sidecar] iptables + redsocks configured, starting redsocks..."
-exec redsocks -c /etc/redsocks.conf
+echo "[proxy-sidecar] tinyproxy configured, starting..."
+exec tinyproxy -d -c /etc/tinyproxy/tinyproxy.conf

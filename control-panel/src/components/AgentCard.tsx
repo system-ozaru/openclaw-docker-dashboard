@@ -254,7 +254,7 @@ export default function AgentCard({
             {agent.cronJobCount}
           </span>
         )}
-        <ProxyBadge proxy={agent.proxy} />
+        <ProxyBadge agentId={agent.id} proxy={agent.proxy} />
       </div>
 
       <div

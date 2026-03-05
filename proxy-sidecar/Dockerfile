@@ -1,6 +1,6 @@
 FROM alpine:3.20
 
-RUN apk add --no-cache redsocks iptables curl
+RUN apk add --no-cache tinyproxy curl
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

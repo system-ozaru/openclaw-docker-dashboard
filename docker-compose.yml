@@ -1,14 +1,40 @@
 services:
+  proxy-agent-01:
+    build: ./proxy-sidecar
+    container_name: proxy-agent-01
+    environment:
+      - PROXY_TYPE=http-connect
+      - PROXY_HOST=31.59.20.176
+      - PROXY_PORT=6754
+      - PROXY_USER=sfqidcla
+      - PROXY_PASS=rvs1k77awkw5
+      - LOCAL_PORT=8888
+    ports:
+      - "18701:18701"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "--max-time", "8", "--proxy", "http://127.0.0.1:8888", "https://api.ipify.org"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 10s
   agent-01:
     image: openclaw-fleet:latest
     build: .
     container_name: openclaw-agent-01
+    network_mode: "service:proxy-agent-01"
     volumes:
       - ./agents/agent-01:/home/openclaw/.openclaw
-    ports:
-      - "18701:18701"
     env_file:
       - .env
+    environment:
+      - HTTP_PROXY=http://127.0.0.1:8888
+      - HTTPS_PROXY=http://127.0.0.1:8888
+      - http_proxy=http://127.0.0.1:8888
+      - https_proxy=http://127.0.0.1:8888
+    depends_on:
+      proxy-agent-01:
+        condition: service_started
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "openclaw", "gateway", "health"]

@@ -25,21 +25,34 @@ export default function ProxyPanel({ agentId, proxyEnabled }: ProxyPanelProps) {
   const [password, setPassword] = useState("");
   const [proxyType, setProxyType] = useState("http-connect");
 
-  // Load current provider config
+  // Sync enabled state when parent prop updates (e.g. from polling)
+  useEffect(() => {
+    if (proxyEnabled !== undefined) setEnabled(proxyEnabled);
+  }, [proxyEnabled]);
+
+  // Load current provider config + actual per-agent proxy status
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/proxy/config");
-        const data: ProxyConfig = await res.json();
+        const [configRes, healthRes] = await Promise.all([
+          fetch("/api/proxy/config"),
+          fetch(`/api/proxy/health/${agentId}`),
+        ]);
+        const data: ProxyConfig = await configRes.json();
         const dp = data.defaultProvider;
         setHost(dp.host || "");
         setPort(String(dp.port || 7777));
         setUsername(dp.username || "");
         setPassword(dp.password === "••••••" ? "" : dp.password || "");
         setProxyType(dp.type || "http-connect");
+
+        const healthData = await healthRes.json();
+        if (typeof healthData.proxyEnabled === "boolean") {
+          setEnabled(healthData.proxyEnabled);
+        }
       } catch { /* ignore */ }
     })();
-  }, []);
+  }, [agentId]);
 
   const fetchHealth = useCallback(async () => {
     if (!enabled) return;
@@ -112,10 +125,10 @@ export default function ProxyPanel({ agentId, proxyEnabled }: ProxyPanelProps) {
     setApplying(true);
     setMessage(null);
     try {
-      const res = await fetch("/api/proxy/apply", { method: "POST" });
+      const res = await fetch(`/api/proxy/apply/${agentId}`, { method: "POST" });
       const data = await res.json();
       if (data.success) {
-        setMessage({ type: "ok", text: "Applied — containers restarting" });
+        setMessage({ type: "ok", text: "Applied — container restarting" });
         setTimeout(fetchHealth, 10000);
       } else {
         setMessage({ type: "err", text: data.error || "Apply failed" });
@@ -322,7 +335,7 @@ export default function ProxyPanel({ agentId, proxyEnabled }: ProxyPanelProps) {
           {applying ? "Applying..." : "Apply & Restart"}
         </button>
         <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-          Regenerates compose and restarts containers
+          Restarts only this agent and its proxy sidecar
         </span>
       </div>
     </div>
