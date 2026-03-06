@@ -4,11 +4,12 @@ import { isZeabur, isRelay } from "./fleetMode";
 import { ensureAgentMeta } from "./agentDiscovery";
 import * as zeabur from "./zeaburService";
 import { sendRequest } from "./wsGateway";
-import { relayGet, relayPost, relayPut } from "./relayClient";
+import { relayGet, relayPost } from "./relayClient";
 
 const FLEET_ROOT = path.resolve(process.cwd(), "..");
 const AGENTS_DIR = path.join(FLEET_ROOT, "agents");
 const TEMPLATE_PATH = path.join(FLEET_ROOT, "templates", "openclaw.json.tpl");
+const CONFIG_FILE = "/home/openclaw/.openclaw/openclaw.json";
 
 const UNIQUE_FIELDS = ["gateway.port", "gateway.auth.token"] as const;
 
@@ -31,18 +32,26 @@ function setNestedValue(obj: Record<string, unknown>, dotPath: string, value: un
   current[keys[keys.length - 1]] = value;
 }
 
+async function relayExec(agentId: string, command: string): Promise<string> {
+  const res = await relayPost<{ output: string }>(
+    `/api/agents/${agentId}/exec`, { command }
+  );
+  return res.output;
+}
+
 export async function readTemplate(): Promise<string> {
   if (isRelay()) {
-    const res = await relayGet<{ template: string }>("/api/config/template");
-    return res.template;
+    const ids = await listAgentIds();
+    if (ids.length === 0) throw new Error("No agents available to read template");
+    return relayExec(ids[0], `cat ${CONFIG_FILE}`);
   }
   return readFile(TEMPLATE_PATH, "utf-8");
 }
 
 export async function writeTemplate(content: string): Promise<void> {
   if (isRelay()) {
-    await relayPut("/api/config/template", { template: content });
-    return;
+    JSON.parse(content.replace(/\$\{[^}]+\}/g, '"__placeholder__"'));
+    throw new Error("Template editing not supported in relay mode. Edit individual agent configs instead.");
   }
   JSON.parse(content.replace(/\$\{[^}]+\}/g, '"__placeholder__"'));
   await writeFile(TEMPLATE_PATH, content, "utf-8");
@@ -50,8 +59,7 @@ export async function writeTemplate(content: string): Promise<void> {
 
 export async function readAgentConfig(agentId: string): Promise<string> {
   if (isRelay()) {
-    const res = await relayGet<{ config: string }>(`/api/config/agent/${agentId}`);
-    return res.config;
+    return relayExec(agentId, `cat ${CONFIG_FILE}`);
   }
   if (isZeabur()) {
     try {
@@ -65,7 +73,7 @@ export async function readAgentConfig(agentId: string): Promise<string> {
     const svc = services.find((s) => s.name === agentId);
     if (svc) {
       const output = await zeabur.executeCommand(svc.serviceId, [
-        "cat", "/home/openclaw/.openclaw/openclaw.json"
+        "cat", CONFIG_FILE
       ]);
       return output;
     }
@@ -79,9 +87,10 @@ export async function writeAgentConfig(
   agentId: string,
   content: string
 ): Promise<void> {
-  JSON.parse(content); // validate
+  JSON.parse(content);
   if (isRelay()) {
-    await relayPut(`/api/config/agent/${agentId}`, { config: content });
+    const b64 = Buffer.from(content + "\n").toString("base64");
+    await relayExec(agentId, `echo '${b64}' | base64 -d > ${CONFIG_FILE}`);
     return;
   }
   if (isZeabur()) {
@@ -96,7 +105,7 @@ export async function writeAgentConfig(
 
 export async function listAgentIds(): Promise<string[]> {
   if (isRelay()) {
-    const res = await relayGet<{ agents: { id: string }[] }>("/api/agents");
+    const res = await relayGet<{ agents: { id: string }[] }>("/api/fleet");
     return (res.agents ?? []).map((a) => a.id).sort();
   }
   if (isZeabur()) {
@@ -113,14 +122,34 @@ export async function listAgentIds(): Promise<string[]> {
 export async function applyConfigToAllAgents(
   sourceJson: string
 ): Promise<{ updated: string[]; errors: string[] }> {
-  if (isRelay()) {
-    return relayPost<{ updated: string[]; errors: string[] }>("/api/config/fleet", { config: sourceJson });
-  }
-
   const sourceConfig = JSON.parse(sourceJson);
   const agentIds = await listAgentIds();
   const updated: string[] = [];
   const errors: string[] = [];
+
+  if (isRelay()) {
+    for (const agentId of agentIds) {
+      try {
+        const existing = JSON.parse(await readAgentConfig(agentId));
+        const uniqueValues: Record<string, unknown> = {};
+        for (const field of UNIQUE_FIELDS) {
+          uniqueValues[field] = getNestedValue(existing, field);
+        }
+        const merged = JSON.parse(JSON.stringify(sourceConfig));
+        for (const field of UNIQUE_FIELDS) {
+          if (uniqueValues[field] !== undefined) {
+            setNestedValue(merged, field, uniqueValues[field]);
+          }
+        }
+        merged.agents.defaults.workspace = "/home/openclaw/.openclaw/workspace";
+        await writeAgentConfig(agentId, JSON.stringify(merged, null, 2));
+        updated.push(agentId);
+      } catch (err) {
+        errors.push(`${agentId}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    return { updated, errors };
+  }
 
   if (isZeabur()) {
     for (const agentId of agentIds) {
@@ -169,7 +198,17 @@ export async function bulkSetModel(
   modelFullId: string
 ): Promise<{ updated: string[]; errors: string[] }> {
   if (isRelay()) {
-    return relayPost<{ updated: string[]; errors: string[] }>("/api/fleet/model", { agentIds, model: modelFullId });
+    const updated: string[] = [];
+    const errors: string[] = [];
+    for (const agentId of agentIds) {
+      try {
+        await relayPost(`/api/agents/${agentId}/model`, { modelFullId });
+        updated.push(agentId);
+      } catch (err) {
+        errors.push(`${agentId}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    return { updated, errors };
   }
 
   const updated: string[] = [];

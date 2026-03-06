@@ -5,10 +5,12 @@ import { isZeabur, isRelay } from "./fleetMode";
 import { ensureAgentMeta } from "./agentDiscovery";
 import * as zeabur from "./zeaburService";
 import { sendRequest } from "./wsGateway";
-import { relayGet, relayPut } from "./relayClient";
+import { relayGet, relayPost } from "./relayClient";
 
 const FLEET_ROOT = path.resolve(process.cwd(), "..");
 const AGENTS_DIR = path.join(FLEET_ROOT, "agents");
+const CONFIG_FILE = "/home/openclaw/.openclaw/openclaw.json";
+const HEARTBEAT_MD_FILE = "/home/openclaw/.openclaw/workspace/HEARTBEAT.md";
 
 function configPath(agentId: string): string {
   return path.join(AGENTS_DIR, agentId, "openclaw.json");
@@ -16,6 +18,30 @@ function configPath(agentId: string): string {
 
 function heartbeatMdPath(agentId: string): string {
   return path.join(AGENTS_DIR, agentId, "workspace", "HEARTBEAT.md");
+}
+
+async function relayExec(agentId: string, command: string): Promise<string> {
+  const res = await relayPost<{ output: string }>(
+    `/api/agents/${agentId}/exec`, { command }
+  );
+  return res.output;
+}
+
+async function relayReadConfig(agentId: string): Promise<Record<string, unknown>> {
+  const raw = await relayExec(agentId, `cat ${CONFIG_FILE}`);
+  return JSON.parse(raw);
+}
+
+async function relayWriteConfig(agentId: string, config: Record<string, unknown>): Promise<void> {
+  const json = JSON.stringify(config, null, 2);
+  const b64 = Buffer.from(json + "\n").toString("base64");
+  await relayExec(agentId, `echo '${b64}' | base64 -d > ${CONFIG_FILE}`);
+}
+
+function extractHeartbeat(config: Record<string, unknown>): HeartbeatConfig | null {
+  const agents = config.agents as Record<string, unknown> | undefined;
+  const defaults = agents?.defaults as Record<string, unknown> | undefined;
+  return (defaults?.heartbeat as HeartbeatConfig) ?? null;
 }
 
 async function readConfig(agentId: string): Promise<Record<string, unknown>> {
@@ -29,38 +55,42 @@ async function writeConfig(agentId: string, config: Record<string, unknown>): Pr
 
 export async function getHeartbeatConfig(agentId: string): Promise<HeartbeatInfo> {
   if (isRelay()) {
-    return relayGet<HeartbeatInfo>(`/api/agents/${agentId}/heartbeat`);
+    const config = await relayReadConfig(agentId);
+    const hb = extractHeartbeat(config);
+    let heartbeatMd = "";
+    try {
+      heartbeatMd = await relayExec(
+        agentId, `cat ${HEARTBEAT_MD_FILE} 2>/dev/null || true`
+      );
+    } catch { /* file missing */ }
+    return { config: hb, heartbeatMd };
   }
   if (isZeabur()) {
     const meta = await ensureAgentMeta(agentId);
     const config = await sendRequest<Record<string, unknown>>(
       meta.serviceId, meta.port, meta.token, "config.get"
     );
-    const agents = config.agents as Record<string, unknown> | undefined;
-    const defaults = agents?.defaults as Record<string, unknown> | undefined;
-    const hb = defaults?.heartbeat as HeartbeatConfig | undefined;
+    const hb = extractHeartbeat(config);
 
     let heartbeatMd = "";
     try {
       heartbeatMd = await zeabur.executeCommand(meta.serviceId, [
-        "cat", "/home/openclaw/.openclaw/workspace/HEARTBEAT.md"
+        "cat", HEARTBEAT_MD_FILE
       ]);
     } catch { /* file missing */ }
 
-    return { config: hb ?? null, heartbeatMd };
+    return { config: hb, heartbeatMd };
   }
 
   const config = await readConfig(agentId);
-  const agents = config.agents as Record<string, unknown> | undefined;
-  const defaults = agents?.defaults as Record<string, unknown> | undefined;
-  const hb = defaults?.heartbeat as HeartbeatConfig | undefined;
+  const hb = extractHeartbeat(config);
 
   let heartbeatMd = "";
   try {
     heartbeatMd = await readFile(heartbeatMdPath(agentId), "utf-8");
   } catch { /* file missing */ }
 
-  return { config: hb ?? null, heartbeatMd };
+  return { config: hb, heartbeatMd };
 }
 
 export async function setHeartbeatConfig(
@@ -68,7 +98,13 @@ export async function setHeartbeatConfig(
   heartbeat: HeartbeatConfig
 ): Promise<void> {
   if (isRelay()) {
-    await relayPut(`/api/agents/${agentId}/heartbeat`, { config: heartbeat });
+    const config = await relayReadConfig(agentId);
+    if (!config.agents) config.agents = {};
+    const agents = config.agents as Record<string, unknown>;
+    if (!agents.defaults) agents.defaults = {};
+    const defaults = agents.defaults as Record<string, unknown>;
+    defaults.heartbeat = heartbeat;
+    await relayWriteConfig(agentId, config);
     return;
   }
   if (isZeabur()) {
@@ -89,13 +125,16 @@ export async function setHeartbeatConfig(
 
 export async function setHeartbeatMd(agentId: string, content: string): Promise<void> {
   if (isRelay()) {
-    await relayPut(`/api/agents/${agentId}/heartbeat`, { heartbeatMd: content });
+    const b64 = Buffer.from(content).toString("base64");
+    await relayExec(
+      agentId, `echo '${b64}' | base64 -d > ${HEARTBEAT_MD_FILE}`
+    );
     return;
   }
   if (isZeabur()) {
     const meta = await ensureAgentMeta(agentId);
     await zeabur.executeCommand(meta.serviceId, [
-      "sh", "-c", `cat > /home/openclaw/.openclaw/workspace/HEARTBEAT.md << 'HBEOF'\n${content}\nHBEOF`
+      "sh", "-c", `cat > ${HEARTBEAT_MD_FILE} << 'HBEOF'\n${content}\nHBEOF`
     ]);
     return;
   }
@@ -104,7 +143,7 @@ export async function setHeartbeatMd(agentId: string, content: string): Promise<
 
 export async function listAgentIds(): Promise<string[]> {
   if (isRelay()) {
-    const res = await relayGet<{ agents: { id: string }[] }>("/api/agents");
+    const res = await relayGet<{ agents: { id: string }[] }>("/api/fleet");
     return (res.agents ?? []).map((a) => a.id).sort();
   }
   if (isZeabur()) {
@@ -119,19 +158,11 @@ export async function listAgentIds(): Promise<string[]> {
 }
 
 export async function setFleetHeartbeat(heartbeat: HeartbeatConfig): Promise<void> {
-  if (isRelay()) {
-    await relayPut("/api/fleet/heartbeat", { config: heartbeat });
-    return;
-  }
   const ids = await listAgentIds();
   await Promise.all(ids.map((id) => setHeartbeatConfig(id, heartbeat)));
 }
 
 export async function setFleetHeartbeatMd(content: string): Promise<void> {
-  if (isRelay()) {
-    await relayPut("/api/fleet/heartbeat", { heartbeatMd: content });
-    return;
-  }
   const ids = await listAgentIds();
   await Promise.all(ids.map((id) => setHeartbeatMd(id, content)));
 }
