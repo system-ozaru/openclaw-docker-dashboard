@@ -2,9 +2,10 @@ import { readFile, writeFile, mkdir } from "fs/promises";
 import path from "path";
 import crypto from "crypto";
 import type { CronJob, CronJobInput } from "./types";
-import { isZeabur } from "./fleetMode";
+import { isZeabur, isRelay } from "./fleetMode";
 import { ensureAgentMeta } from "./agentDiscovery";
 import { sendRequest } from "./wsGateway";
+import { relayGet, relayPost, relayPut, relayDelete } from "./relayClient";
 
 const FLEET_ROOT = path.resolve(process.cwd(), "..");
 const AGENTS_DIR = path.join(FLEET_ROOT, "agents");
@@ -34,6 +35,10 @@ async function writeJobsFile(agentId: string, data: JobsFile): Promise<void> {
 }
 
 export async function listJobs(agentId: string): Promise<CronJob[]> {
+  if (isRelay()) {
+    const res = await relayGet<{ jobs: CronJob[] }>(`/api/agents/${agentId}/cron`);
+    return res.jobs ?? [];
+  }
   if (isZeabur()) {
     const meta = await ensureAgentMeta(agentId);
     const result = await sendRequest<{ jobs?: CronJob[] }>(
@@ -46,6 +51,10 @@ export async function listJobs(agentId: string): Promise<CronJob[]> {
 }
 
 export async function getJob(agentId: string, jobId: string): Promise<CronJob | null> {
+  if (isRelay()) {
+    const jobs = await listJobs(agentId);
+    return jobs.find((j) => j.id === jobId) ?? null;
+  }
   if (isZeabur()) {
     const jobs = await listJobs(agentId);
     return jobs.find((j) => j.id === jobId) ?? null;
@@ -55,6 +64,10 @@ export async function getJob(agentId: string, jobId: string): Promise<CronJob | 
 }
 
 export async function createJob(agentId: string, input: CronJobInput): Promise<CronJob> {
+  if (isRelay()) {
+    const res = await relayPost<{ job: CronJob }>(`/api/agents/${agentId}/cron`, input);
+    return res.job;
+  }
   if (isZeabur()) {
     const meta = await ensureAgentMeta(agentId);
     const result = await sendRequest<CronJob>(
@@ -88,6 +101,10 @@ export async function updateJob(
   jobId: string,
   updates: Partial<CronJobInput> & { enabled?: boolean }
 ): Promise<CronJob | null> {
+  if (isRelay()) {
+    const res = await relayPut<{ job: CronJob | null }>(`/api/agents/${agentId}/cron/${jobId}`, updates);
+    return res.job;
+  }
   if (isZeabur()) {
     const meta = await ensureAgentMeta(agentId);
     const result = await sendRequest<CronJob | null>(
@@ -111,6 +128,10 @@ export async function updateJob(
 }
 
 export async function deleteJob(agentId: string, jobId: string): Promise<boolean> {
+  if (isRelay()) {
+    const res = await relayDelete<{ success: boolean }>(`/api/agents/${agentId}/cron/${jobId}`);
+    return res.success;
+  }
   if (isZeabur()) {
     const meta = await ensureAgentMeta(agentId);
     await sendRequest(meta.serviceId, meta.port, meta.token, "cron.remove", { jobId });

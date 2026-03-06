@@ -1,10 +1,11 @@
 import { readdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import type { HeartbeatConfig, HeartbeatInfo } from "./types";
-import { isZeabur } from "./fleetMode";
+import { isZeabur, isRelay } from "./fleetMode";
 import { ensureAgentMeta } from "./agentDiscovery";
 import * as zeabur from "./zeaburService";
 import { sendRequest } from "./wsGateway";
+import { relayGet, relayPut } from "./relayClient";
 
 const FLEET_ROOT = path.resolve(process.cwd(), "..");
 const AGENTS_DIR = path.join(FLEET_ROOT, "agents");
@@ -27,6 +28,9 @@ async function writeConfig(agentId: string, config: Record<string, unknown>): Pr
 }
 
 export async function getHeartbeatConfig(agentId: string): Promise<HeartbeatInfo> {
+  if (isRelay()) {
+    return relayGet<HeartbeatInfo>(`/api/agents/${agentId}/heartbeat`);
+  }
   if (isZeabur()) {
     const meta = await ensureAgentMeta(agentId);
     const config = await sendRequest<Record<string, unknown>>(
@@ -63,6 +67,10 @@ export async function setHeartbeatConfig(
   agentId: string,
   heartbeat: HeartbeatConfig
 ): Promise<void> {
+  if (isRelay()) {
+    await relayPut(`/api/agents/${agentId}/heartbeat`, { config: heartbeat });
+    return;
+  }
   if (isZeabur()) {
     const meta = await ensureAgentMeta(agentId);
     await sendRequest(meta.serviceId, meta.port, meta.token, "config.set", {
@@ -80,6 +88,10 @@ export async function setHeartbeatConfig(
 }
 
 export async function setHeartbeatMd(agentId: string, content: string): Promise<void> {
+  if (isRelay()) {
+    await relayPut(`/api/agents/${agentId}/heartbeat`, { heartbeatMd: content });
+    return;
+  }
   if (isZeabur()) {
     const meta = await ensureAgentMeta(agentId);
     await zeabur.executeCommand(meta.serviceId, [
@@ -91,6 +103,10 @@ export async function setHeartbeatMd(agentId: string, content: string): Promise<
 }
 
 export async function listAgentIds(): Promise<string[]> {
+  if (isRelay()) {
+    const res = await relayGet<{ agents: { id: string }[] }>("/api/agents");
+    return (res.agents ?? []).map((a) => a.id).sort();
+  }
   if (isZeabur()) {
     const services = await zeabur.listAgentServices();
     return services.map((s) => s.name).sort();
@@ -103,11 +119,19 @@ export async function listAgentIds(): Promise<string[]> {
 }
 
 export async function setFleetHeartbeat(heartbeat: HeartbeatConfig): Promise<void> {
+  if (isRelay()) {
+    await relayPut("/api/fleet/heartbeat", { config: heartbeat });
+    return;
+  }
   const ids = await listAgentIds();
   await Promise.all(ids.map((id) => setHeartbeatConfig(id, heartbeat)));
 }
 
 export async function setFleetHeartbeatMd(content: string): Promise<void> {
+  if (isRelay()) {
+    await relayPut("/api/fleet/heartbeat", { heartbeatMd: content });
+    return;
+  }
   const ids = await listAgentIds();
   await Promise.all(ids.map((id) => setHeartbeatMd(id, content)));
 }

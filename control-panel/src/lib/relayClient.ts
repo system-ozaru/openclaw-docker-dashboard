@@ -40,3 +40,16 @@ export async function relayPut<T = unknown>(path: string, body: unknown, timeout
   if (!res.ok) throw new Error(`Relay ${path}: ${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;
 }
+
+export async function relayDelete<T = unknown>(path: string, timeoutMs = 30000): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const res = await fetch(`${RELAY_URL}${path}`, {
+    method: "DELETE",
+    headers: { "X-Relay-Key": RELAY_KEY },
+    signal: controller.signal,
+  });
+  clearTimeout(timer);
+  if (!res.ok) throw new Error(`Relay ${path}: ${res.status} ${res.statusText}`);
+  return res.json() as Promise<T>;
+}

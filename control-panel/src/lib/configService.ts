@@ -1,9 +1,10 @@
 import { readdir, readFile, writeFile } from "fs/promises";
 import path from "path";
-import { isZeabur } from "./fleetMode";
+import { isZeabur, isRelay } from "./fleetMode";
 import { ensureAgentMeta } from "./agentDiscovery";
 import * as zeabur from "./zeaburService";
 import { sendRequest } from "./wsGateway";
+import { relayGet, relayPost, relayPut } from "./relayClient";
 
 const FLEET_ROOT = path.resolve(process.cwd(), "..");
 const AGENTS_DIR = path.join(FLEET_ROOT, "agents");
@@ -31,15 +32,27 @@ function setNestedValue(obj: Record<string, unknown>, dotPath: string, value: un
 }
 
 export async function readTemplate(): Promise<string> {
+  if (isRelay()) {
+    const res = await relayGet<{ template: string }>("/api/config/template");
+    return res.template;
+  }
   return readFile(TEMPLATE_PATH, "utf-8");
 }
 
 export async function writeTemplate(content: string): Promise<void> {
+  if (isRelay()) {
+    await relayPut("/api/config/template", { template: content });
+    return;
+  }
   JSON.parse(content.replace(/\$\{[^}]+\}/g, '"__placeholder__"'));
   await writeFile(TEMPLATE_PATH, content, "utf-8");
 }
 
 export async function readAgentConfig(agentId: string): Promise<string> {
+  if (isRelay()) {
+    const res = await relayGet<{ config: string }>(`/api/config/agent/${agentId}`);
+    return res.config;
+  }
   if (isZeabur()) {
     try {
       const meta = await ensureAgentMeta(agentId);
@@ -67,6 +80,10 @@ export async function writeAgentConfig(
   content: string
 ): Promise<void> {
   JSON.parse(content); // validate
+  if (isRelay()) {
+    await relayPut(`/api/config/agent/${agentId}`, { config: content });
+    return;
+  }
   if (isZeabur()) {
     const meta = await ensureAgentMeta(agentId);
     const parsed = JSON.parse(content);
@@ -78,6 +95,10 @@ export async function writeAgentConfig(
 }
 
 export async function listAgentIds(): Promise<string[]> {
+  if (isRelay()) {
+    const res = await relayGet<{ agents: { id: string }[] }>("/api/agents");
+    return (res.agents ?? []).map((a) => a.id).sort();
+  }
   if (isZeabur()) {
     const services = await zeabur.listAgentServices();
     return services.map((s) => s.name).sort();
@@ -92,6 +113,10 @@ export async function listAgentIds(): Promise<string[]> {
 export async function applyConfigToAllAgents(
   sourceJson: string
 ): Promise<{ updated: string[]; errors: string[] }> {
+  if (isRelay()) {
+    return relayPost<{ updated: string[]; errors: string[] }>("/api/config/fleet", { config: sourceJson });
+  }
+
   const sourceConfig = JSON.parse(sourceJson);
   const agentIds = await listAgentIds();
   const updated: string[] = [];
@@ -143,6 +168,10 @@ export async function bulkSetModel(
   agentIds: string[],
   modelFullId: string
 ): Promise<{ updated: string[]; errors: string[] }> {
+  if (isRelay()) {
+    return relayPost<{ updated: string[]; errors: string[] }>("/api/fleet/model", { agentIds, model: modelFullId });
+  }
+
   const updated: string[] = [];
   const errors: string[] = [];
 
