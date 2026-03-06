@@ -482,7 +482,7 @@ function AgentResultRow({
       }}
       onClick={hasResponse && !expanded ? onToggle : undefined}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <span className="text-sm">{result.emoji || "🤖"}</span>
         <AgentStatusDot status={agentStatus} />
         <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
@@ -496,7 +496,7 @@ function AgentResultRow({
             {statusLabel}
           </span>
         )}
-        <span className="flex-1" />
+        <span className="flex-1 min-w-0" />
         {hasResponse && expanded && (
           <button
             onClick={(e) => { e.stopPropagation(); onChat(); }}
@@ -506,23 +506,23 @@ function AgentResultRow({
             Full Chat
           </button>
         )}
-        <span className="text-xs" style={{ color: STATUS_COLOR[result.status] }}>
+        <span className="text-xs shrink-0" style={{ color: STATUS_COLOR[result.status] }}>
           {STATUS_ICON[result.status]} {result.status}
         </span>
         {result.durationMs != null && (
-          <span className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
+          <span className="text-xs font-mono shrink-0" style={{ color: "var(--text-muted)" }}>
             {(result.durationMs / 1000).toFixed(1)}s
           </span>
         )}
         {result.retryCount > 0 && (
-          <span className="text-xs" style={{ color: "var(--yellow)" }}>
+          <span className="text-xs shrink-0" style={{ color: "var(--yellow)" }}>
             retry {result.retryCount}
           </span>
         )}
         {hasResponse && (
           <button
             onClick={(e) => { e.stopPropagation(); onToggle(); }}
-            className="text-xs px-1 cursor-pointer"
+            className="text-xs px-1 cursor-pointer shrink-0"
             style={{ color: "var(--text-muted)" }}
           >
             {expanded ? "▲" : "▼"}

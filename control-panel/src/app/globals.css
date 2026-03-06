@@ -19,6 +19,7 @@
   --yellow-subtle: rgba(250, 204, 21, 0.15);
   --red: #ef4444;
   --red-subtle: rgba(239, 68, 68, 0.15);
+  --bottom-nav-height: 60px;
 }
 
 body {
@@ -30,4 +31,40 @@ body {
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input, textarea, select, button {
+  font-size: 16px;
+}
+
+@media (min-width: 768px) {
+  input, textarea, select, button {
+    font-size: inherit;
+  }
+
+  :root {
+    --bottom-nav-height: 0px;
+  }
+}
+
+.mobile-bottom-nav {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: rgba(36, 36, 36, 0.92);
+}
+
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .mobile-bottom-nav {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }

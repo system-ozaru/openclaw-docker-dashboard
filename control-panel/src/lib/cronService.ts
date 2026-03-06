@@ -3,7 +3,7 @@ import path from "path";
 import crypto from "crypto";
 import type { CronJob, CronJobInput } from "./types";
 import { isZeabur } from "./fleetMode";
-import { getAgentMeta } from "./agentDiscovery";
+import { ensureAgentMeta } from "./agentDiscovery";
 import { sendRequest } from "./wsGateway";
 
 const FLEET_ROOT = path.resolve(process.cwd(), "..");
@@ -33,15 +33,9 @@ async function writeJobsFile(agentId: string, data: JobsFile): Promise<void> {
   await writeFile(filePath, JSON.stringify(data, null, 2) + "\n", "utf-8");
 }
 
-function requireMeta(agentId: string) {
-  const meta = getAgentMeta(agentId);
-  if (!meta) throw new Error(`No cached metadata for agent: ${agentId}`);
-  return meta;
-}
-
 export async function listJobs(agentId: string): Promise<CronJob[]> {
   if (isZeabur()) {
-    const meta = requireMeta(agentId);
+    const meta = await ensureAgentMeta(agentId);
     const result = await sendRequest<{ jobs?: CronJob[] }>(
       meta.serviceId, meta.port, meta.token, "cron.list"
     );
@@ -62,7 +56,7 @@ export async function getJob(agentId: string, jobId: string): Promise<CronJob | 
 
 export async function createJob(agentId: string, input: CronJobInput): Promise<CronJob> {
   if (isZeabur()) {
-    const meta = requireMeta(agentId);
+    const meta = await ensureAgentMeta(agentId);
     const result = await sendRequest<CronJob>(
       meta.serviceId, meta.port, meta.token, "cron.add", { job: input }
     );
@@ -95,7 +89,7 @@ export async function updateJob(
   updates: Partial<CronJobInput> & { enabled?: boolean }
 ): Promise<CronJob | null> {
   if (isZeabur()) {
-    const meta = requireMeta(agentId);
+    const meta = await ensureAgentMeta(agentId);
     const result = await sendRequest<CronJob | null>(
       meta.serviceId, meta.port, meta.token, "cron.update", { jobId, updates }
     );
@@ -118,7 +112,7 @@ export async function updateJob(
 
 export async function deleteJob(agentId: string, jobId: string): Promise<boolean> {
   if (isZeabur()) {
-    const meta = requireMeta(agentId);
+    const meta = await ensureAgentMeta(agentId);
     await sendRequest(meta.serviceId, meta.port, meta.token, "cron.remove", { jobId });
     return true;
   }

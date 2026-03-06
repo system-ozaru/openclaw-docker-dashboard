@@ -143,8 +143,8 @@ export default function BroadcastPanel({
 
   return (
     <PanelShell>
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+        <div className="flex items-center gap-2 flex-wrap">
           <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
             Broadcast Message
           </h2>
@@ -217,14 +217,14 @@ export default function BroadcastPanel({
           agentCount={targetCount}
         />
 
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
           <span className="text-xs" style={{ color: "var(--text-muted)" }}>
             Will send to {targetCount} agent{targetCount !== 1 ? "s" : ""}
           </span>
           <button
             onClick={handleBroadcast}
             disabled={!message.trim() || sending || targetCount === 0}
-            className="px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full sm:w-auto px-4 py-2 rounded-lg text-sm font-medium cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ background: "var(--accent)", color: "white" }}
           >
             {sending ? "Starting..." : `Broadcast to ${targetCount} Agents`}
@@ -254,7 +254,7 @@ export default function BroadcastPanel({
 function PanelShell({ children }: { children: React.ReactNode }) {
   return (
     <div
-      className="rounded-xl border p-5"
+      className="rounded-xl border p-3 sm:p-5"
       style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
     >
       {children}

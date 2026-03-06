@@ -16,6 +16,28 @@ export function getAgentMeta(agentId: string) {
   return agentMap.get(agentId);
 }
 
+/**
+ * Lightweight metadata fetch for Zeabur mode.
+ * Returns cached data if available; otherwise fetches just the service ID,
+ * port, and gateway token from Zeabur without triggering the full discovery flow.
+ */
+export async function ensureAgentMeta(agentId: string): Promise<{ serviceId: string; port: number; token: string }> {
+  const cached = agentMap.get(agentId);
+  if (cached) return cached;
+
+  const services = await zeabur.listAgentServices();
+  const svc = services.find((s) => s.name === agentId || s.serviceId === agentId);
+  if (!svc) throw new Error(`Agent service not found: ${agentId}`);
+
+  const vars = await zeabur.getServiceVariables(svc.serviceId);
+  const port = resolveGatewayPort(vars);
+  const token = resolveGatewayToken(vars);
+
+  const meta = { serviceId: svc.serviceId, port, token };
+  agentMap.set(agentId, meta);
+  return meta;
+}
+
 function parseIdentityField(content: string, field: string): string {
   const regex = new RegExp(`^- \\*\\*${field}:\\*\\*\\s*(.+)$`, "m");
   const match = content.match(regex);

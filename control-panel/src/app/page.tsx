@@ -91,11 +91,11 @@ export default function Dashboard() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="ml-56 flex-1 p-8">
-        <div className="flex items-center justify-between mb-6">
+      <main className="md:ml-56 flex-1 p-4 pb-24 md:p-8 md:pb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
           <div>
             <h1
-              className="text-xl font-bold"
+              className="text-lg sm:text-xl font-bold"
               style={{ color: "var(--text-primary)" }}
             >
               Fleet Dashboard
@@ -104,10 +104,10 @@ export default function Dashboard() {
               Monitor and control your OpenClaw agent fleet
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
             <button
               onClick={() => setShowCreate(true)}
-              className="px-3 py-1.5 rounded text-xs font-medium cursor-pointer"
+              className="px-3 py-2 sm:py-1.5 rounded text-xs font-medium cursor-pointer"
               style={{ background: "var(--accent)", color: "white" }}
             >
               + New Agent

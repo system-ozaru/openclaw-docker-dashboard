@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, KeyboardEvent } from "react";
 
 interface PayloadMsg {
   text: string;
@@ -42,6 +42,7 @@ export default function ChatPanel({ agentId, agentName, onModelChanged }: ChatPa
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [liveModel, setLiveModel] = useState<string | null>(null);
+  const [messageQueue, setMessageQueue] = useState<string[]>([]);
 
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
   const [activeSessionId, setActiveSessionId] = useState("control-panel");
@@ -51,6 +52,9 @@ export default function ChatPanel({ agentId, agentName, onModelChanged }: ChatPa
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const activeSessionIdRef = useRef(activeSessionId);
+  useEffect(() => { activeSessionIdRef.current = activeSessionId; }, [activeSessionId]);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => {
@@ -123,10 +127,7 @@ export default function ChatPanel({ agentId, agentName, onModelChanged }: ChatPa
     fetchSessions();
   };
 
-  const handleSend = async () => {
-    if (!input.trim() || sending) return;
-    const text = input.trim();
-    setInput("");
+  const sendMessage = useCallback(async (text: string) => {
     setMessages((prev) => [...prev, { role: "user", text }]);
     setSending(true);
 
@@ -134,7 +135,7 @@ export default function ChatPanel({ agentId, agentName, onModelChanged }: ChatPa
       const res = await fetch(`/api/agents/${agentId}/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text, sessionId: activeSessionId }),
+        body: JSON.stringify({ message: text, sessionId: activeSessionIdRef.current }),
       });
       const data = await res.json();
 
@@ -170,6 +171,44 @@ export default function ChatPanel({ agentId, agentName, onModelChanged }: ChatPa
     } finally {
       setSending(false);
     }
+  }, [agentId, fetchSessions, onModelChanged]);
+
+  // Auto-dequeue: when sending finishes, fire the next queued message
+  useEffect(() => {
+    if (!sending && messageQueue.length > 0) {
+      const [next, ...rest] = messageQueue;
+      setMessageQueue(rest);
+      sendMessage(next);
+    }
+  }, [sending, messageQueue, sendMessage]);
+
+  const clearInputField = () => {
+    setInput("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+  };
+
+  const handleSend = () => {
+    if (!input.trim()) return;
+    const text = input.trim();
+    clearInputField();
+    if (sending) {
+      setMessageQueue((q) => [...q, text]);
+    } else {
+      sendMessage(text);
+    }
+  };
+
+  const handleQueue = () => {
+    if (!input.trim()) return;
+    const text = input.trim();
+    clearInputField();
+    setMessageQueue((q) => [...q, text]);
+  };
+
+  const removeFromQueue = (idx: number) => {
+    setMessageQueue((q) => q.filter((_, i) => i !== idx));
   };
 
   const renderAgentMessage = (msg: ChatMessage, msgIdx: number) => {
@@ -225,7 +264,7 @@ export default function ChatPanel({ agentId, agentName, onModelChanged }: ChatPa
   return (
     <div
       className="rounded-lg border flex flex-col"
-      style={{ background: "var(--bg-card)", borderColor: "var(--border)", height: "480px" }}
+      style={{ background: "var(--bg-card)", borderColor: "var(--border)", height: "min(480px, calc(70vh - var(--bottom-nav-height)))" }}
     >
       {/* Header */}
       <div
@@ -379,30 +418,119 @@ export default function ChatPanel({ agentId, agentName, onModelChanged }: ChatPa
         )}
       </div>
 
+      {/* Queue display */}
+      {messageQueue.length > 0 && (
+        <div
+          className="px-3 pt-2 pb-1 border-t shrink-0"
+          style={{ borderColor: "var(--border)" }}
+        >
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
+              Queue ({messageQueue.length})
+            </span>
+            <button
+              onClick={() => setMessageQueue([])}
+              className="text-xs cursor-pointer"
+              style={{ color: "var(--text-muted)", opacity: 0.6 }}
+              title="Clear all"
+            >
+              clear all
+            </button>
+          </div>
+          <div className="space-y-1 max-h-24 overflow-y-auto">
+            {messageQueue.map((msg, idx) => (
+              <div
+                key={idx}
+                className="flex items-start gap-1.5 rounded px-2 py-1"
+                style={{ background: "var(--bg-secondary)" }}
+              >
+                <span
+                  className="text-xs shrink-0 mt-0.5 font-mono"
+                  style={{ color: "var(--text-muted)", opacity: 0.6 }}
+                >
+                  {idx + 1}.
+                </span>
+                <span
+                  className="flex-1 text-xs truncate"
+                  style={{ color: "var(--text-secondary)" }}
+                  title={msg}
+                >
+                  {msg}
+                </span>
+                <button
+                  onClick={() => removeFromQueue(idx)}
+                  className="text-xs shrink-0 cursor-pointer leading-none"
+                  style={{ color: "var(--text-muted)" }}
+                  title="Remove"
+                  onMouseEnter={(e) => (e.currentTarget.style.color = "var(--red)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Input */}
       <div className="p-3 border-t shrink-0" style={{ borderColor: "var(--border)" }}>
-        <div className="flex gap-2">
-          <input
-            type="text"
+        <div className="flex gap-2 items-end">
+          <textarea
+            ref={textareaRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSend()}
-            placeholder="Send a message..."
-            className="flex-1 rounded-md border px-3 py-2 text-sm outline-none"
+            onChange={(e) => {
+              setInput(e.target.value);
+              e.target.style.height = "auto";
+              e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
+            }}
+            onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder={sending ? "Agent is thinking... (queue a message)" : "Send a message..."}
+            rows={1}
+            className="flex-1 rounded-md border px-3 py-2 text-sm outline-none resize-none"
             style={{
               background: "var(--bg-primary)",
               borderColor: "var(--border)",
               color: "var(--text-primary)",
+              minHeight: "38px",
+              maxHeight: "160px",
+              overflowY: "auto",
+              lineHeight: "1.5",
             }}
           />
+          {sending && (
+            <button
+              onClick={handleQueue}
+              disabled={!input.trim()}
+              className="px-3 py-2 rounded-md text-sm font-medium cursor-pointer disabled:opacity-40 shrink-0"
+              style={{
+                background: "var(--bg-hover)",
+                color: "var(--text-secondary)",
+                border: "1px solid var(--border)",
+                height: "38px",
+              }}
+              title="Add to queue — sends automatically when agent is ready"
+            >
+              + Queue
+            </button>
+          )}
           <button
             onClick={handleSend}
-            disabled={sending || !input.trim()}
-            className="px-4 py-2 rounded-md text-sm font-medium cursor-pointer disabled:opacity-40"
-            style={{ background: "var(--accent)", color: "white" }}
+            disabled={!input.trim()}
+            className="px-4 py-2 rounded-md text-sm font-medium cursor-pointer disabled:opacity-40 shrink-0"
+            style={{ background: "var(--accent)", color: "white", height: "38px" }}
+            title={sending ? "Add to queue and send when ready" : "Send now"}
           >
-            Send
+            {sending ? "Queue" : "Send"}
           </button>
+        </div>
+        <div className="text-xs mt-1" style={{ color: "var(--text-muted)", opacity: 0.5 }}>
+          Enter to {sending ? "queue" : "send"} · Shift+Enter for new line
         </div>
       </div>
     </div>

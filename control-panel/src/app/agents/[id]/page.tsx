@@ -51,7 +51,7 @@ export default function AgentDetail() {
     return (
       <div className="flex min-h-screen">
         <Sidebar />
-        <main className="ml-56 flex-1 p-8">
+        <main className="md:ml-56 flex-1 p-4 pb-24 md:p-8 md:pb-8">
           <div style={{ color: "var(--text-muted)" }}>Loading...</div>
         </main>
       </div>
@@ -62,7 +62,7 @@ export default function AgentDetail() {
     return (
       <div className="flex min-h-screen">
         <Sidebar />
-        <main className="ml-56 flex-1 p-8">
+        <main className="md:ml-56 flex-1 p-4 pb-24 md:p-8 md:pb-8">
           <div style={{ color: "var(--red)" }}>Agent not found: {agentId}</div>
           <Link href="/" className="text-sm mt-2 inline-block" style={{ color: "var(--accent)" }}>
             ← Back to Dashboard
@@ -75,35 +75,38 @@ export default function AgentDetail() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="ml-56 flex-1 p-8">
+      <main className="md:ml-56 flex-1 p-4 pb-24 md:p-8 md:pb-8">
         <Link
           href="/"
-          className="text-xs mb-4 inline-block"
+          className="text-xs mb-4 inline-flex items-center gap-1 py-1.5"
           style={{ color: "var(--text-muted)" }}
         >
-          ← Back to Dashboard
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 12H5" /><path d="M12 19l-7-7 7-7" />
+          </svg>
+          Back to Dashboard
         </Link>
 
-        <div className="flex items-start justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl">{agent.emoji || "🤖"}</span>
-            <div>
+        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="text-2xl sm:text-3xl shrink-0">{agent.emoji || "🤖"}</span>
+            <div className="min-w-0">
               <h1
-                className="text-xl font-bold flex items-center gap-2"
+                className="text-lg sm:text-xl font-bold flex items-center gap-2 flex-wrap"
                 style={{ color: "var(--text-primary)" }}
               >
-                {agent.name}
+                <span className="truncate">{agent.name}</span>
                 <StatusBadge
                   status={agent.containerStatus}
                   healthy={agent.healthy}
                 />
               </h1>
-              <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+              <p className="text-sm truncate" style={{ color: "var(--text-secondary)" }}>
                 {agent.vibe}
               </p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap shrink-0">
             <a
               href={
                 agent.publicDomain
@@ -112,7 +115,7 @@ export default function AgentDetail() {
               }
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3 py-1.5 rounded border text-xs cursor-pointer flex items-center gap-1.5"
+              className="px-3 py-2 sm:py-1.5 rounded border text-xs cursor-pointer flex items-center gap-1.5"
               style={{
                 borderColor: "var(--border)",
                 color: "var(--text-muted)",
@@ -124,7 +127,7 @@ export default function AgentDetail() {
             </a>
             <button
               onClick={() => handleControl("restart")}
-              className="px-3 py-1.5 rounded border text-xs cursor-pointer"
+              className="px-3 py-2 sm:py-1.5 rounded border text-xs cursor-pointer"
               style={{
                 borderColor: "var(--border)",
                 color: "var(--yellow)",
@@ -136,7 +139,7 @@ export default function AgentDetail() {
             {agent.containerStatus === "running" ? (
               <button
                 onClick={() => handleControl("stop")}
-                className="px-3 py-1.5 rounded border text-xs cursor-pointer"
+                className="px-3 py-2 sm:py-1.5 rounded border text-xs cursor-pointer"
                 style={{
                   borderColor: "var(--border)",
                   color: "var(--text-secondary)",
@@ -147,7 +150,7 @@ export default function AgentDetail() {
             ) : (
               <button
                 onClick={() => handleControl("start")}
-                className="px-3 py-1.5 rounded border text-xs cursor-pointer"
+                className="px-3 py-2 sm:py-1.5 rounded border text-xs cursor-pointer"
                 style={{
                   borderColor: "var(--border)",
                   color: "var(--green)",
@@ -161,7 +164,7 @@ export default function AgentDetail() {
         </div>
 
         {/* Info cards */}
-        <div className="grid grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4">
           {[
             { label: "Agent ID", value: agent.id },
             { label: "Port", value: String(agent.port) },

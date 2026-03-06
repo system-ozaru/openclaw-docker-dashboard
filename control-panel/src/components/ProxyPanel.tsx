@@ -325,7 +325,7 @@ export default function ProxyPanel({ agentId, proxyEnabled }: ProxyPanelProps) {
       )}
 
       {/* Apply footer */}
-      <div className="pt-3 border-t flex items-center gap-2" style={{ borderColor: "var(--border)" }}>
+      <div className="pt-3 border-t flex flex-col sm:flex-row sm:items-center gap-2" style={{ borderColor: "var(--border)" }}>
         <button
           onClick={handleApply}
           disabled={applying}

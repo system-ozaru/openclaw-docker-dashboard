@@ -29,7 +29,7 @@ export default function BroadcastPage() {
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <main className="ml-56 flex-1 p-8 max-w-3xl">
+      <main className="md:ml-56 flex-1 p-4 pb-24 md:p-8 md:pb-8 max-w-3xl">
         <div className="mb-6">
           <h1
             className="text-xl font-bold"

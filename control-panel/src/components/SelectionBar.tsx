@@ -76,7 +76,7 @@ export default function SelectionBar({
 
   return (
     <div
-      className="rounded-lg border p-3 mb-4 flex items-center justify-between"
+      className="rounded-lg border p-3 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
       style={{
         background: status === "applying" ? "var(--yellow-subtle)" :
                     status === "done" ? "var(--green-subtle)" :
@@ -130,7 +130,7 @@ export default function SelectionBar({
 
             {open && (
               <div
-                className="absolute right-0 top-full mt-1 w-64 rounded-lg border overflow-hidden z-50"
+                className="absolute right-0 sm:right-0 left-0 sm:left-auto top-full mt-1 w-auto sm:w-64 rounded-lg border overflow-hidden z-50"
                 style={{
                   background: "var(--bg-secondary)",
                   borderColor: "var(--border)",

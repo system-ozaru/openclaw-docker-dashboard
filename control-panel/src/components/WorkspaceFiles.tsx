@@ -92,7 +92,7 @@ export default function WorkspaceFiles({ agentId }: WorkspaceFilesProps) {
       style={{
         background: "var(--bg-card)",
         borderColor: "var(--border)",
-        height: "480px",
+        height: "min(480px, calc(70vh - var(--bottom-nav-height)))",
       }}
     >
       {/* Header */}
@@ -119,7 +119,7 @@ export default function WorkspaceFiles({ agentId }: WorkspaceFilesProps) {
       <div className="flex flex-1 min-h-0">
         {/* File list sidebar */}
         <div
-          className="w-44 shrink-0 border-r overflow-y-auto py-2"
+          className="w-32 sm:w-44 shrink-0 border-r overflow-y-auto py-2"
           style={{ borderColor: "var(--border)" }}
         >
           {loading ? (

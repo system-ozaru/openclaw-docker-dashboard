@@ -73,12 +73,12 @@ export default function CreateAgentModal({ open, onClose, onCreated }: CreateAge
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
       style={{ background: "rgba(0,0,0,0.6)" }}
       onClick={(e) => e.target === e.currentTarget && !creating && handleClose()}
     >
       <div
-        className="rounded-xl border w-full max-w-md"
+        className="rounded-t-xl sm:rounded-xl border w-full max-w-md sm:mx-4 max-h-[90vh] overflow-y-auto"
         style={{ background: "var(--bg-secondary)", borderColor: "var(--border)" }}
       >
         <div className="p-5 border-b" style={{ borderColor: "var(--border)" }}>

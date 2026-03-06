@@ -2,7 +2,7 @@ import { readdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import type { HeartbeatConfig, HeartbeatInfo } from "./types";
 import { isZeabur } from "./fleetMode";
-import { getAgentMeta } from "./agentDiscovery";
+import { ensureAgentMeta } from "./agentDiscovery";
 import * as zeabur from "./zeaburService";
 import { sendRequest } from "./wsGateway";
 
@@ -28,8 +28,7 @@ async function writeConfig(agentId: string, config: Record<string, unknown>): Pr
 
 export async function getHeartbeatConfig(agentId: string): Promise<HeartbeatInfo> {
   if (isZeabur()) {
-    const meta = getAgentMeta(agentId);
-    if (!meta) throw new Error(`No cached metadata for agent: ${agentId}`);
+    const meta = await ensureAgentMeta(agentId);
     const config = await sendRequest<Record<string, unknown>>(
       meta.serviceId, meta.port, meta.token, "config.get"
     );
@@ -65,8 +64,7 @@ export async function setHeartbeatConfig(
   heartbeat: HeartbeatConfig
 ): Promise<void> {
   if (isZeabur()) {
-    const meta = getAgentMeta(agentId);
-    if (!meta) throw new Error(`No cached metadata for agent: ${agentId}`);
+    const meta = await ensureAgentMeta(agentId);
     await sendRequest(meta.serviceId, meta.port, meta.token, "config.set", {
       path: "agents.defaults.heartbeat", value: heartbeat,
     });
@@ -83,8 +81,7 @@ export async function setHeartbeatConfig(
 
 export async function setHeartbeatMd(agentId: string, content: string): Promise<void> {
   if (isZeabur()) {
-    const meta = getAgentMeta(agentId);
-    if (!meta) throw new Error(`No cached metadata for agent: ${agentId}`);
+    const meta = await ensureAgentMeta(agentId);
     await zeabur.executeCommand(meta.serviceId, [
       "sh", "-c", `cat > /home/openclaw/.openclaw/workspace/HEARTBEAT.md << 'HBEOF'\n${content}\nHBEOF`
     ]);

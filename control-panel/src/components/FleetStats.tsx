@@ -16,11 +16,11 @@ export default function FleetStats({
   ];
 
   return (
-    <div className="grid grid-cols-3 gap-4 mb-6">
+    <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-6">
       {stats.map((stat) => (
         <div
           key={stat.label}
-          className="rounded-lg border p-4"
+          className="rounded-lg border p-3 sm:p-4"
           style={{ background: "var(--bg-card)", borderColor: "var(--border)" }}
         >
           <div className="text-xs mb-1" style={{ color: "var(--text-muted)" }}>

@@ -1,7 +1,7 @@
 import { readdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import { isZeabur } from "./fleetMode";
-import { getAgentMeta } from "./agentDiscovery";
+import { ensureAgentMeta } from "./agentDiscovery";
 import * as zeabur from "./zeaburService";
 import { sendRequest } from "./wsGateway";
 
@@ -41,15 +41,13 @@ export async function writeTemplate(content: string): Promise<void> {
 
 export async function readAgentConfig(agentId: string): Promise<string> {
   if (isZeabur()) {
-    const meta = getAgentMeta(agentId);
-    if (meta) {
-      try {
-        const config = await sendRequest<Record<string, unknown>>(
-          meta.serviceId, meta.port, meta.token, "config.get"
-        );
-        return JSON.stringify(config, null, 2);
-      } catch { /* fall through to executeCommand */ }
-    }
+    try {
+      const meta = await ensureAgentMeta(agentId);
+      const config = await sendRequest<Record<string, unknown>>(
+        meta.serviceId, meta.port, meta.token, "config.get"
+      );
+      return JSON.stringify(config, null, 2);
+    } catch { /* fall through to executeCommand */ }
     const services = await zeabur.listAgentServices();
     const svc = services.find((s) => s.name === agentId);
     if (svc) {
@@ -70,13 +68,10 @@ export async function writeAgentConfig(
 ): Promise<void> {
   JSON.parse(content); // validate
   if (isZeabur()) {
-    const meta = getAgentMeta(agentId);
-    if (meta) {
-      const parsed = JSON.parse(content);
-      await sendRequest(meta.serviceId, meta.port, meta.token, "config.patch", { config: parsed });
-      return;
-    }
-    throw new Error(`No cached metadata for agent: ${agentId}`);
+    const meta = await ensureAgentMeta(agentId);
+    const parsed = JSON.parse(content);
+    await sendRequest(meta.serviceId, meta.port, meta.token, "config.patch", { config: parsed });
+    return;
   }
   const configPath = path.join(AGENTS_DIR, agentId, "openclaw.json");
   await writeFile(configPath, content, "utf-8");
@@ -105,8 +100,7 @@ export async function applyConfigToAllAgents(
   if (isZeabur()) {
     for (const agentId of agentIds) {
       try {
-        const meta = getAgentMeta(agentId);
-        if (!meta) { errors.push(`${agentId}: no cached metadata`); continue; }
+        const meta = await ensureAgentMeta(agentId);
         await sendRequest(meta.serviceId, meta.port, meta.token, "config.patch", {
           config: sourceConfig,
         });
@@ -155,8 +149,7 @@ export async function bulkSetModel(
   if (isZeabur()) {
     for (const agentId of agentIds) {
       try {
-        const meta = getAgentMeta(agentId);
-        if (!meta) { errors.push(`${agentId}: no cached metadata`); continue; }
+        const meta = await ensureAgentMeta(agentId);
         await sendRequest(meta.serviceId, meta.port, meta.token, "config.set", {
           path: "agents.defaults.model.primary", value: modelFullId,
         });

@@ -22,13 +22,13 @@ export default function BulkActions({ onFleetAction }: BulkActionsProps) {
   ];
 
   return (
-    <div className="flex gap-2">
+    <div className="flex gap-2 flex-wrap">
       {actions.map((action) => (
         <button
           key={action.key}
           onClick={() => handleAction(action.key)}
           disabled={loading !== null}
-          className="px-3 py-1.5 rounded border text-xs font-medium cursor-pointer transition-colors disabled:opacity-50"
+          className="px-3 py-2 sm:py-1.5 rounded border text-xs font-medium cursor-pointer transition-colors disabled:opacity-50"
           style={{
             borderColor: "var(--border)",
             color: action.color,

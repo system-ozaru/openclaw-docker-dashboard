@@ -117,7 +117,7 @@ export default function HeartbeatPanel({ agentId, showApplyAll }: HeartbeatPanel
       </div>
 
       {/* Interval presets */}
-      <div className="flex items-center gap-1.5 mb-3">
+      <div className="flex items-center gap-1.5 mb-3 flex-wrap">
         {INTERVAL_PRESETS.map((preset) => (
           <button
             key={preset}

@@ -1,7 +1,7 @@
 import { readdir, readFile, writeFile, stat } from "fs/promises";
 import path from "path";
 import { isZeabur, isRelay } from "./fleetMode";
-import { getAgentMeta } from "./agentDiscovery";
+import { ensureAgentMeta } from "./agentDiscovery";
 import * as zeabur from "./zeaburService";
 import { relayGet, relayPut } from "./relayClient";
 
@@ -82,8 +82,7 @@ export async function listWorkspaceFiles(agentId: string): Promise<WorkspaceFile
     return res.files;
   }
   if (isZeabur()) {
-    const meta = getAgentMeta(agentId);
-    if (!meta) throw new Error(`No cached metadata for agent: ${agentId}`);
+    const meta = await ensureAgentMeta(agentId);
     const files: WorkspaceFile[] = [];
     try {
       const output = await zeabur.executeCommand(meta.serviceId, [
@@ -136,8 +135,7 @@ export async function readWorkspaceFile(agentId: string, relativePath: string): 
     return res.content;
   }
   if (isZeabur()) {
-    const meta = getAgentMeta(agentId);
-    if (!meta) throw new Error(`No cached metadata for agent: ${agentId}`);
+    const meta = await ensureAgentMeta(agentId);
     return zeabur.executeCommand(meta.serviceId, ["cat", `${ZEABUR_AGENT_ROOT}/${sanitized}`]);
   }
   const filePath = path.join(agentRoot(agentId), sanitized);
@@ -155,8 +153,7 @@ export async function writeWorkspaceFile(
     return;
   }
   if (isZeabur()) {
-    const meta = getAgentMeta(agentId);
-    if (!meta) throw new Error(`No cached metadata for agent: ${agentId}`);
+    const meta = await ensureAgentMeta(agentId);
     await zeabur.executeCommand(meta.serviceId, [
       "sh", "-c", `cat > ${ZEABUR_AGENT_ROOT}/${sanitized} << 'WSEOF'\n${content}\nWSEOF`
     ]);

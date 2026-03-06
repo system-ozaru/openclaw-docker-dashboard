@@ -42,7 +42,7 @@ export default function LogViewer({ agentId }: LogViewerProps) {
       style={{
         background: "var(--bg-card)",
         borderColor: "var(--border)",
-        height: "480px",
+        height: "min(480px, calc(70vh - var(--bottom-nav-height)))",
       }}
     >
       <div
